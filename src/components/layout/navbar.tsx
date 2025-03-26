@@ -1,6 +1,6 @@
 
 import React, { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { 
   FileText, 
@@ -8,10 +8,22 @@ import {
   Plus, 
   Settings, 
   Menu, 
-  X 
+  X,
+  LogIn,
+  LogOut,
+  User
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useAuth } from "@/contexts/AuthContext";
+import { 
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger
+} from "@/components/ui/dropdown-menu";
 
 const NavLink = ({ 
   to, 
@@ -47,9 +59,16 @@ const NavLink = ({
 const Navbar = () => {
   const isMobile = useIsMobile();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
 
   const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
   const closeMenu = () => setIsMenuOpen(false);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/auth');
+  };
 
   const navItems = [
     { to: "/", label: "Dashboard", icon: <Home size={18} /> },
@@ -58,19 +77,53 @@ const Navbar = () => {
     { to: "/settings", label: "Settings", icon: <Settings size={18} /> },
   ];
 
+  const renderAuthButton = () => {
+    if (user) {
+      return (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="rounded-full">
+              <User size={18} />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Account</DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleSignOut}>
+              <LogOut className="mr-2 h-4 w-4" />
+              <span>Log out</span>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      );
+    }
+    
+    return (
+      <Button variant="ghost" size="sm" asChild>
+        <Link to="/auth">
+          <LogIn size={18} className="mr-2" />
+          Log in
+        </Link>
+      </Button>
+    );
+  };
+
   if (isMobile) {
     return (
       <>
         <header className="sticky top-0 z-30 flex items-center justify-between py-4 px-6 bg-background/80 backdrop-blur-lg border-b">
           <Link to="/" className="font-display text-lg font-semibold">PO System</Link>
-          <Button 
-            variant="ghost" 
-            size="icon"
-            onClick={toggleMenu}
-            aria-label="Toggle menu"
-          >
-            {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
-          </Button>
+          <div className="flex items-center gap-2">
+            {renderAuthButton()}
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={toggleMenu}
+              aria-label="Toggle menu"
+            >
+              {isMenuOpen ? <X size={20} /> : <Menu size={20} />}
+            </Button>
+          </div>
         </header>
 
         {isMenuOpen && (
@@ -96,17 +149,20 @@ const Navbar = () => {
   return (
     <header className="sticky top-0 z-30 flex items-center justify-between py-4 px-6 bg-background/80 backdrop-blur-lg border-b">
       <Link to="/" className="font-display text-lg font-semibold">PO System</Link>
-      <nav className="flex items-center gap-1">
-        {navItems.map((item) => (
-          <NavLink 
-            key={item.to} 
-            to={item.to} 
-            icon={item.icon}
-          >
-            {item.label}
-          </NavLink>
-        ))}
-      </nav>
+      <div className="flex items-center">
+        <nav className="flex items-center gap-1 mr-4">
+          {navItems.map((item) => (
+            <NavLink 
+              key={item.to} 
+              to={item.to} 
+              icon={item.icon}
+            >
+              {item.label}
+            </NavLink>
+          ))}
+        </nav>
+        {renderAuthButton()}
+      </div>
     </header>
   );
 };
