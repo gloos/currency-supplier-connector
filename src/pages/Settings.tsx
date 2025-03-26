@@ -18,7 +18,7 @@ import {
 import { freeAgentApi } from "@/utils/freeagent-api";
 import { useToast } from "@/hooks/use-toast";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import { Loader2, ExternalLink, CheckCircle } from "lucide-react";
+import { Loader2, ExternalLink, CheckCircle, AlertTriangle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 // Interface for preferences table
@@ -42,8 +42,9 @@ const Settings = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [oauthError, setOauthError] = useState<string | null>(null);
   
-  // Check for OAuth code in URL
+  // Check for OAuth code or error in URL
   useEffect(() => {
     const checkCredentials = async () => {
       setIsLoading(true);
@@ -59,10 +60,22 @@ const Settings = () => {
         // Process OAuth callback if present
         const query = new URLSearchParams(location.search);
         const code = query.get('code');
+        const error = query.get('error');
+        const errorDescription = query.get('error_description');
         
-        if (code && freeAgentClientId && freeAgentClientSecret) {
+        if (error) {
+          setOauthError(errorDescription || 'An error occurred during authorization');
+          console.error("OAuth error:", error, errorDescription);
+          toast({
+            title: "Authorization Failed",
+            description: errorDescription || "Failed to connect to FreeAgent",
+            variant: "destructive"
+          });
+          navigate("/settings", { replace: true });
+        } else if (code && freeAgentClientId && freeAgentClientSecret) {
           setIsSubmitting(true);
           try {
+            console.log("Got auth code, exchanging for token:", { code });
             await freeAgentApi.exchangeCodeForToken(code, freeAgentClientId, freeAgentClientSecret);
             setIsConnected(true);
             // Remove code from URL
@@ -72,7 +85,8 @@ const Settings = () => {
               description: "Successfully connected to FreeAgent"
             });
           } catch (error) {
-            console.error("OAuth error:", error);
+            console.error("OAuth token exchange error:", error);
+            setOauthError(error instanceof Error ? error.message : "Failed to exchange authorization code");
             toast({
               title: "Connection Failed",
               description: error instanceof Error ? error.message : "Failed to connect to FreeAgent",
@@ -90,7 +104,7 @@ const Settings = () => {
     };
     
     checkCredentials();
-  }, [location, navigate, toast]);
+  }, [location, navigate, toast, freeAgentClientId, freeAgentClientSecret]);
   
   // Load preferences from database
   useEffect(() => {
@@ -117,18 +131,23 @@ const Settings = () => {
   
   const handleConnectFreeAgent = (e: React.FormEvent) => {
     e.preventDefault();
+    setOauthError(null);
     
     if (!freeAgentClientId || !freeAgentClientSecret) {
       toast({
         title: "Error",
-        description: "Please enter both Client ID and Client Secret",
+        description: "Please enter both OAuth Identifier and OAuth Secret",
         variant: "destructive"
       });
       return;
     }
     
+    // Log the OAuth flow for debugging
+    console.log("Starting OAuth flow with client ID:", freeAgentClientId);
+    
     // Redirect to FreeAgent OAuth authorization page
     const authUrl = freeAgentApi.getAuthUrl(freeAgentClientId);
+    console.log("Redirecting to auth URL:", authUrl);
     window.location.href = authUrl;
   };
   
@@ -140,6 +159,7 @@ const Settings = () => {
       setIsConnected(false);
       setFreeAgentClientId("");
       setFreeAgentClientSecret("");
+      setOauthError(null);
     } catch (error) {
       console.error("Error disconnecting:", error);
       toast({
@@ -244,6 +264,16 @@ const Settings = () => {
                       placeholder="Your FreeAgent OAuth Secret"
                     />
                   </div>
+                  
+                  {oauthError && (
+                    <div className="rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-800 dark:text-amber-300 p-4 text-sm flex items-start">
+                      <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
+                      <div>
+                        <p className="font-medium">Authorization Error</p>
+                        <p className="mt-1">{oauthError}</p>
+                      </div>
+                    </div>
+                  )}
                   
                   <div className="pt-2 text-sm text-muted-foreground">
                     <a 

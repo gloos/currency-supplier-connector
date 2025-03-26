@@ -63,9 +63,10 @@ interface PreferencesTable {
   updated_at: string | null;
 }
 
-const FREEAGENT_AUTH_URL = "https://api.freeagent.com/v2/approve_app";
-const FREEAGENT_API_URL = "https://api.freeagent.com/v2";
-const FREEAGENT_TOKEN_URL = "https://api.freeagent.com/v2/token_endpoint";
+// Updated OAuth URLs based on FreeAgent API documentation
+const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app";
+const FREEAGENT_API_URL = "https://api.sandbox.freeagent.com/v2";
+const FREEAGENT_TOKEN_URL = "https://api.sandbox.freeagent.com/v2/token_endpoint";
 const REDIRECT_URI = `${window.location.origin}/settings`;
 
 // This is a placeholder implementation with OAuth2 flow for FreeAgent
@@ -134,12 +135,15 @@ export const freeAgentApi = {
       redirect_uri: REDIRECT_URI
     });
     
+    console.log("Generated FreeAgent Auth URL:", `${FREEAGENT_AUTH_URL}?${params.toString()}`);
     return `${FREEAGENT_AUTH_URL}?${params.toString()}`;
   },
   
   // Exchange the authorization code for access token
   async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<boolean> {
     try {
+      console.log("Exchanging code for token with:", { code, clientId, clientSecret, redirectUri: REDIRECT_URI });
+      
       const params = new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
@@ -157,7 +161,9 @@ export const freeAgentApi = {
         body: params.toString()
       });
       
+      console.log("Token exchange response status:", response.status);
       const data = await response.json();
+      console.log("Token exchange response data:", data);
       
       if (!response.ok) {
         throw new Error(data.error_description || 'Failed to exchange code for token');
