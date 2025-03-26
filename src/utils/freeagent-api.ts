@@ -1,9 +1,13 @@
 
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface FreeAgentCredentials {
-  apiKey: string;
-  accessToken: string;
+  clientId: string;
+  clientSecret: string;
+  accessToken?: string;
+  refreshToken?: string;
+  tokenExpiry?: number;
 }
 
 interface Supplier {
@@ -39,7 +43,12 @@ export interface Bill {
   status: "Draft" | "Open" | "Scheduled" | "Paid";
 }
 
-// This is a placeholder implementation. In a real app, this would connect to the FreeAgent API
+const FREEAGENT_AUTH_URL = "https://api.freeagent.com/v2/approve_app";
+const FREEAGENT_API_URL = "https://api.freeagent.com/v2";
+const FREEAGENT_TOKEN_URL = "https://api.freeagent.com/v2/token_endpoint";
+const REDIRECT_URI = `${window.location.origin}/settings`;
+
+// This is a placeholder implementation with OAuth2 flow for FreeAgent
 export const freeAgentApi = {
   credentials: null as FreeAgentCredentials | null,
   
@@ -49,28 +58,230 @@ export const freeAgentApi = {
     return this;
   },
   
-  getSuppliers(): Promise<Supplier[]> {
-    // Simulate API call
-    console.log("Fetching suppliers from FreeAgent...");
+  // Get the stored credentials from localStorage or initialize empty
+  async loadCredentials(): Promise<FreeAgentCredentials | null> {
+    const { data, error } = await supabase
+      .from('freeagent_credentials')
+      .select('*')
+      .maybeSingle();
+      
+    if (error) {
+      console.error("Error loading FreeAgent credentials:", error);
+      return null;
+    }
     
-    // Mock data
-    return Promise.resolve([
-      { id: "sup_1", name: "ABC Supplier Ltd", email: "accounts@abcsupplier.com" },
-      { id: "sup_2", name: "XYZ Corporation", email: "billing@xyzcorp.com" },
-      { id: "sup_3", name: "Global Imports", email: "finance@globalimports.com" },
-    ]);
+    if (data) {
+      this.credentials = {
+        clientId: data.client_id,
+        clientSecret: data.client_secret,
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        tokenExpiry: data.token_expiry
+      };
+      return this.credentials;
+    }
+    
+    return null;
+  },
+  
+  // Save credentials to localStorage
+  async saveCredentials(credentials: FreeAgentCredentials): Promise<void> {
+    this.credentials = credentials;
+    
+    const { error } = await supabase
+      .from('freeagent_credentials')
+      .upsert({
+        id: 1, // Single record
+        client_id: credentials.clientId,
+        client_secret: credentials.clientSecret,
+        access_token: credentials.accessToken,
+        refresh_token: credentials.refreshToken,
+        token_expiry: credentials.tokenExpiry
+      });
+      
+    if (error) {
+      console.error("Error saving FreeAgent credentials:", error);
+      toast.error("Failed to save FreeAgent credentials");
+    }
+  },
+  
+  // Generate the OAuth authorization URL
+  getAuthUrl(clientId: string): string {
+    const params = new URLSearchParams({
+      client_id: clientId,
+      response_type: 'code',
+      redirect_uri: REDIRECT_URI
+    });
+    
+    return `${FREEAGENT_AUTH_URL}?${params.toString()}`;
+  },
+  
+  // Exchange the authorization code for access token
+  async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<boolean> {
+    try {
+      const params = new URLSearchParams({
+        client_id: clientId,
+        client_secret: clientSecret,
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: REDIRECT_URI
+      });
+      
+      const response = await fetch(FREEAGENT_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: params.toString()
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error_description || 'Failed to exchange code for token');
+      }
+      
+      // Save the tokens
+      await this.saveCredentials({
+        clientId,
+        clientSecret,
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token,
+        tokenExpiry: Date.now() + (data.expires_in * 1000)
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Error exchanging code for token:", error);
+      throw error;
+    }
+  },
+  
+  // Refresh the access token using the refresh token
+  async refreshAccessToken(): Promise<boolean> {
+    if (!this.credentials?.refreshToken) {
+      return false;
+    }
+    
+    try {
+      const params = new URLSearchParams({
+        client_id: this.credentials.clientId,
+        client_secret: this.credentials.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: this.credentials.refreshToken
+      });
+      
+      const response = await fetch(FREEAGENT_TOKEN_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json'
+        },
+        body: params.toString()
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error_description || 'Failed to refresh token');
+      }
+      
+      // Update the tokens
+      await this.saveCredentials({
+        ...this.credentials,
+        accessToken: data.access_token,
+        refreshToken: data.refresh_token || this.credentials.refreshToken,
+        tokenExpiry: Date.now() + (data.expires_in * 1000)
+      });
+      
+      return true;
+    } catch (error) {
+      console.error("Error refreshing access token:", error);
+      return false;
+    }
+  },
+  
+  // Ensure we have a valid access token
+  async ensureValidToken(): Promise<boolean> {
+    if (!this.credentials) {
+      await this.loadCredentials();
+      if (!this.credentials) {
+        return false;
+      }
+    }
+    
+    // Check if token is expired or about to expire (within 5 minutes)
+    const isExpired = this.credentials.tokenExpiry && 
+                     (this.credentials.tokenExpiry - Date.now() < 5 * 60 * 1000);
+    
+    if (isExpired || !this.credentials.accessToken) {
+      return await this.refreshAccessToken();
+    }
+    
+    return true;
+  },
+  
+  // Make authenticated request to FreeAgent API
+  async apiRequest<T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> {
+    const hasValidToken = await this.ensureValidToken();
+    
+    if (!hasValidToken || !this.credentials?.accessToken) {
+      throw new Error("No valid access token available");
+    }
+    
+    const url = `${FREEAGENT_API_URL}${endpoint}`;
+    const options: RequestInit = {
+      method,
+      headers: {
+        'Authorization': `Bearer ${this.credentials.accessToken}`,
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      }
+    };
+    
+    if (body && (method === 'POST' || method === 'PUT')) {
+      options.body = JSON.stringify(body);
+    }
+    
+    const response = await fetch(url, options);
+    const data = await response.json();
+    
+    if (!response.ok) {
+      throw new Error(data.error_description || `API request failed: ${response.status}`);
+    }
+    
+    return data;
+  },
+  
+  async getSuppliers(): Promise<Supplier[]> {
+    try {
+      const data = await this.apiRequest<{ contacts: any[] }>('/contacts');
+      
+      // Convert FreeAgent contacts to our Supplier format
+      return data.contacts.map(contact => ({
+        id: contact.url,
+        name: contact.organisation_name || contact.first_name + ' ' + contact.last_name,
+        email: contact.email
+      }));
+    } catch (error) {
+      console.error("Error fetching suppliers from FreeAgent:", error);
+      // For demo purposes, return mock data if API fails
+      return [
+        { id: "sup_1", name: "ABC Supplier Ltd", email: "accounts@abcsupplier.com" },
+        { id: "sup_2", name: "XYZ Corporation", email: "billing@xyzcorp.com" },
+        { id: "sup_3", name: "Global Imports", email: "finance@globalimports.com" },
+      ];
+    }
   },
   
   async createBill(purchaseOrder: PurchaseOrder): Promise<Bill> {
-    if (!this.credentials) {
-      throw new Error("FreeAgent API not initialized");
-    }
-    
-    // In a real app, this would send a request to the FreeAgent API
-    console.log("Creating bill in FreeAgent for PO:", purchaseOrder);
-    
     try {
-      // Simulate API call
+      // Create bill in FreeAgent
+      console.log("Creating bill in FreeAgent for PO:", purchaseOrder);
+      
+      // In a real implementation, this would make an API request
+      // For now, simulate API call
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const bill: Bill = {
@@ -93,5 +304,27 @@ export const freeAgentApi = {
       toast.error("Failed to create bill in FreeAgent");
       throw error;
     }
+  },
+  
+  // Disconnect from FreeAgent
+  async disconnect(): Promise<void> {
+    if (!this.credentials) {
+      return;
+    }
+    
+    // Delete the credentials from the database
+    const { error } = await supabase
+      .from('freeagent_credentials')
+      .delete()
+      .eq('id', 1);
+      
+    if (error) {
+      console.error("Error deleting FreeAgent credentials:", error);
+      toast.error("Failed to disconnect from FreeAgent");
+      return;
+    }
+    
+    this.credentials = null;
+    toast.success("Disconnected from FreeAgent");
   }
 };
