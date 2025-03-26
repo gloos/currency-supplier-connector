@@ -43,6 +43,26 @@ export interface Bill {
   status: "Draft" | "Open" | "Scheduled" | "Paid";
 }
 
+// Database table interfaces
+interface FreeAgentCredentialsTable {
+  id: number;
+  client_id: string;
+  client_secret: string;
+  access_token: string | null;
+  refresh_token: string | null;
+  token_expiry: number | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+interface PreferencesTable {
+  id: number;
+  auto_create_bills: boolean;
+  default_currency: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 const FREEAGENT_AUTH_URL = "https://api.freeagent.com/v2/approve_app";
 const FREEAGENT_API_URL = "https://api.freeagent.com/v2";
 const FREEAGENT_TOKEN_URL = "https://api.freeagent.com/v2/token_endpoint";
@@ -71,12 +91,13 @@ export const freeAgentApi = {
     }
     
     if (data) {
+      const credentials = data as FreeAgentCredentialsTable;
       this.credentials = {
-        clientId: data.client_id,
-        clientSecret: data.client_secret,
-        accessToken: data.access_token,
-        refreshToken: data.refresh_token,
-        tokenExpiry: data.token_expiry
+        clientId: credentials.client_id,
+        clientSecret: credentials.client_secret,
+        accessToken: credentials.access_token || undefined,
+        refreshToken: credentials.refresh_token || undefined,
+        tokenExpiry: credentials.token_expiry || undefined
       };
       return this.credentials;
     }
@@ -223,7 +244,7 @@ export const freeAgentApi = {
   },
   
   // Make authenticated request to FreeAgent API
-  async apiRequest<T>(endpoint: string, method: string = 'GET', body?: any): Promise<T> {
+  async apiRequest(endpoint: string, method: string = 'GET', body?: any): Promise<any> {
     const hasValidToken = await this.ensureValidToken();
     
     if (!hasValidToken || !this.credentials?.accessToken) {
@@ -256,10 +277,10 @@ export const freeAgentApi = {
   
   async getSuppliers(): Promise<Supplier[]> {
     try {
-      const data = await this.apiRequest<{ contacts: any[] }>('/contacts');
+      const data = await this.apiRequest('/contacts');
       
       // Convert FreeAgent contacts to our Supplier format
-      return data.contacts.map(contact => ({
+      return data.contacts.map((contact: any) => ({
         id: contact.url,
         name: contact.organisation_name || contact.first_name + ' ' + contact.last_name,
         email: contact.email

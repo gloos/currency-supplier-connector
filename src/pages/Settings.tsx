@@ -21,6 +21,15 @@ import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { Loader2, ExternalLink, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
+// Interface for preferences table
+interface PreferencesTable {
+  id: number;
+  auto_create_bills: boolean;
+  default_currency: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
 const Settings = () => {
   const { toast } = useToast();
   const location = useLocation();
@@ -97,8 +106,9 @@ const Settings = () => {
       }
       
       if (data) {
-        setAutoCreateBills(data.auto_create_bills ?? true);
-        setDefaultCurrency(data.default_currency ?? "USD");
+        const prefs = data as PreferencesTable;
+        setAutoCreateBills(prefs.auto_create_bills ?? true);
+        setDefaultCurrency(prefs.default_currency ?? "USD");
       }
     };
     

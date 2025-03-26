@@ -9,6 +9,63 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      freeagent_credentials: {
+        Row: {
+          access_token: string | null
+          client_id: string
+          client_secret: string
+          created_at: string | null
+          id: number
+          refresh_token: string | null
+          token_expiry: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          client_id: string
+          client_secret: string
+          created_at?: string | null
+          id: number
+          refresh_token?: string | null
+          token_expiry?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          client_id?: string
+          client_secret?: string
+          created_at?: string | null
+          id?: number
+          refresh_token?: string | null
+          token_expiry?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      preferences: {
+        Row: {
+          auto_create_bills: boolean | null
+          created_at: string | null
+          default_currency: string | null
+          id: number
+          updated_at: string | null
+        }
+        Insert: {
+          auto_create_bills?: boolean | null
+          created_at?: string | null
+          default_currency?: string | null
+          id: number
+          updated_at?: string | null
+        }
+        Update: {
+          auto_create_bills?: boolean | null
+          created_at?: string | null
+          default_currency?: string | null
+          id?: number
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
