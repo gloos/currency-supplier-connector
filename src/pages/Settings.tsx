@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import Navbar from "@/components/layout/navbar";
@@ -47,7 +46,9 @@ const Settings = () => {
   
   useEffect(() => {
     // Set the redirect URI for display purposes
-    setRedirectUri(`${window.location.origin}/settings`);
+    const uri = `${window.location.origin}/settings`;
+    console.log("Current redirect URI for display:", uri);
+    setRedirectUri(uri);
   }, []);
   
   // Check for OAuth code or error in URL
@@ -78,31 +79,73 @@ const Settings = () => {
             variant: "destructive"
           });
           navigate("/settings", { replace: true });
-        } else if (code && freeAgentClientId && freeAgentClientSecret) {
-          setIsSubmitting(true);
-          try {
-            console.log("Got auth code, exchanging for token:", { code });
-            // Trim whitespace from credentials
-            const trimmedClientId = freeAgentClientId.trim();
-            const trimmedClientSecret = freeAgentClientSecret.trim();
-            await freeAgentApi.exchangeCodeForToken(code, trimmedClientId, trimmedClientSecret);
-            setIsConnected(true);
-            // Remove code from URL
-            navigate("/settings", { replace: true });
-            toast({
-              title: "Connected",
-              description: "Successfully connected to FreeAgent"
-            });
-          } catch (error) {
-            console.error("OAuth token exchange error:", error);
-            setOauthError(error instanceof Error ? error.message : "Failed to exchange authorization code");
-            toast({
-              title: "Connection Failed",
-              description: error instanceof Error ? error.message : "Failed to connect to FreeAgent",
-              variant: "destructive"
-            });
-          } finally {
-            setIsSubmitting(false);
+        } else if (code) {
+          console.log("Got auth code from URL:", code);
+          
+          // If we have client credentials saved in state, use them for exchange
+          if (freeAgentClientId && freeAgentClientSecret) {
+            setIsSubmitting(true);
+            try {
+              console.log("Exchanging code for token with saved credentials");
+              // Trim whitespace from credentials
+              const trimmedClientId = freeAgentClientId.trim();
+              const trimmedClientSecret = freeAgentClientSecret.trim();
+              await freeAgentApi.exchangeCodeForToken(code, trimmedClientId, trimmedClientSecret);
+              setIsConnected(true);
+              // Remove code from URL
+              navigate("/settings", { replace: true });
+              toast({
+                title: "Connected",
+                description: "Successfully connected to FreeAgent"
+              });
+            } catch (error) {
+              console.error("OAuth token exchange error:", error);
+              setOauthError(error instanceof Error ? error.message : "Failed to exchange authorization code");
+              toast({
+                title: "Connection Failed",
+                description: error instanceof Error ? error.message : "Failed to connect to FreeAgent",
+                variant: "destructive"
+              });
+            } finally {
+              setIsSubmitting(false);
+            }
+          } else {
+            // If we don't have client credentials in state, try to load them
+            console.log("Need to load credentials from database for token exchange");
+            const credentials = await freeAgentApi.loadCredentials();
+            if (credentials?.clientId && credentials?.clientSecret) {
+              setIsSubmitting(true);
+              try {
+                console.log("Exchanging code with loaded credentials");
+                await freeAgentApi.exchangeCodeForToken(code, credentials.clientId, credentials.clientSecret);
+                setIsConnected(true);
+                setFreeAgentClientId(credentials.clientId);
+                // Remove code from URL
+                navigate("/settings", { replace: true });
+                toast({
+                  title: "Connected",
+                  description: "Successfully connected to FreeAgent"
+                });
+              } catch (error) {
+                console.error("OAuth token exchange error with loaded credentials:", error);
+                setOauthError(error instanceof Error ? error.message : "Failed to exchange authorization code");
+                toast({
+                  title: "Connection Failed",
+                  description: error instanceof Error ? error.message : "Failed to connect to FreeAgent",
+                  variant: "destructive"
+                });
+              } finally {
+                setIsSubmitting(false);
+              }
+            } else {
+              console.error("Cannot exchange token: missing client credentials");
+              setOauthError("Missing client credentials. Please enter client ID and secret.");
+              toast({
+                title: "Connection Failed",
+                description: "Missing client credentials. Please enter client ID and secret.",
+                variant: "destructive"
+              });
+            }
           }
         }
       } catch (error) {
@@ -113,7 +156,7 @@ const Settings = () => {
     };
     
     checkCredentials();
-  }, [location, navigate, toast, freeAgentClientId, freeAgentClientSecret]);
+  }, [location, navigate, toast]);
   
   // Load preferences from database
   useEffect(() => {
@@ -154,17 +197,41 @@ const Settings = () => {
       return;
     }
     
-    // Log the OAuth flow for debugging
-    console.log("Starting OAuth flow with client ID:", trimmedClientId);
+    // Save credentials first
+    const saveCredentials = async () => {
+      try {
+        await freeAgentApi.saveCredentials({
+          clientId: trimmedClientId,
+          clientSecret: trimmedClientSecret,
+          accessToken: undefined,
+          refreshToken: undefined,
+          tokenExpiry: undefined
+        });
+        
+        // Set the clean values back to state
+        setFreeAgentClientId(trimmedClientId);
+        setFreeAgentClientSecret(trimmedClientSecret);
+        
+        // Log the OAuth flow for debugging
+        console.log("Starting OAuth flow with client ID:", trimmedClientId);
+        
+        // Generate authorization URL
+        const authUrl = freeAgentApi.getAuthUrl(trimmedClientId);
+        console.log("Redirecting to auth URL:", authUrl);
+        
+        // Redirect to FreeAgent OAuth authorization page using window.location for direct navigation
+        window.location.href = authUrl;
+      } catch (error) {
+        console.error("Error saving credentials before redirect:", error);
+        toast({
+          title: "Error",
+          description: "Failed to save credentials",
+          variant: "destructive"
+        });
+      }
+    };
     
-    // Set the clean values back to state
-    setFreeAgentClientId(trimmedClientId);
-    setFreeAgentClientSecret(trimmedClientSecret);
-    
-    // Redirect to FreeAgent OAuth authorization page
-    const authUrl = freeAgentApi.getAuthUrl(trimmedClientId);
-    console.log("Redirecting to auth URL:", authUrl);
-    window.location.href = authUrl;
+    saveCredentials();
   };
   
   const handleDisconnect = async () => {

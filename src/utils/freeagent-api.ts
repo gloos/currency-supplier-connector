@@ -1,3 +1,4 @@
+
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -63,13 +64,17 @@ interface PreferencesTable {
 }
 
 // Updated OAuth URLs based on FreeAgent API documentation
+// Using direct URLs instead of trying to embed them
 const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app";
 const FREEAGENT_API_URL = "https://api.sandbox.freeagent.com/v2";
 const FREEAGENT_TOKEN_URL = "https://api.sandbox.freeagent.com/v2/token_endpoint";
 
 // Dynamically get the redirect URI based on the current origin
 const getRedirectUri = () => {
-  return `${window.location.origin}/settings`;
+  // Make sure this returns the exact URL we've configured in FreeAgent
+  const redirectUri = `${window.location.origin}/settings`;
+  console.log("Generated redirect URI:", redirectUri);
+  return redirectUri;
 };
 
 // This is a placeholder implementation with OAuth2 flow for FreeAgent
@@ -142,10 +147,11 @@ export const freeAgentApi = {
       redirect_uri: redirectUri
     });
     
-    console.log("Generated FreeAgent Auth URL:", `${FREEAGENT_AUTH_URL}?${params.toString()}`);
+    const authUrl = `${FREEAGENT_AUTH_URL}?${params.toString()}`;
+    console.log("Generated FreeAgent Auth URL:", authUrl);
     console.log("Using redirect URI:", redirectUri);
     console.log("Using client ID:", trimmedClientId);
-    return `${FREEAGENT_AUTH_URL}?${params.toString()}`;
+    return authUrl;
   },
   
   // Exchange the authorization code for access token
