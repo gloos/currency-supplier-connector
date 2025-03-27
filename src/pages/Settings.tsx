@@ -82,7 +82,10 @@ const Settings = () => {
           setIsSubmitting(true);
           try {
             console.log("Got auth code, exchanging for token:", { code });
-            await freeAgentApi.exchangeCodeForToken(code, freeAgentClientId, freeAgentClientSecret);
+            // Trim whitespace from credentials
+            const trimmedClientId = freeAgentClientId.trim();
+            const trimmedClientSecret = freeAgentClientSecret.trim();
+            await freeAgentApi.exchangeCodeForToken(code, trimmedClientId, trimmedClientSecret);
             setIsConnected(true);
             // Remove code from URL
             navigate("/settings", { replace: true });
@@ -139,7 +142,10 @@ const Settings = () => {
     e.preventDefault();
     setOauthError(null);
     
-    if (!freeAgentClientId || !freeAgentClientSecret) {
+    const trimmedClientId = freeAgentClientId.trim();
+    const trimmedClientSecret = freeAgentClientSecret.trim();
+    
+    if (!trimmedClientId || !trimmedClientSecret) {
       toast({
         title: "Error",
         description: "Please enter both OAuth Identifier and OAuth Secret",
@@ -149,10 +155,14 @@ const Settings = () => {
     }
     
     // Log the OAuth flow for debugging
-    console.log("Starting OAuth flow with client ID:", freeAgentClientId);
+    console.log("Starting OAuth flow with client ID:", trimmedClientId);
+    
+    // Set the clean values back to state
+    setFreeAgentClientId(trimmedClientId);
+    setFreeAgentClientSecret(trimmedClientSecret);
     
     // Redirect to FreeAgent OAuth authorization page
-    const authUrl = freeAgentApi.getAuthUrl(freeAgentClientId);
+    const authUrl = freeAgentApi.getAuthUrl(trimmedClientId);
     console.log("Redirecting to auth URL:", authUrl);
     window.location.href = authUrl;
   };

@@ -133,28 +133,39 @@ export const freeAgentApi = {
   
   // Generate the OAuth authorization URL
   getAuthUrl(clientId: string): string {
+    // Trim whitespace from client ID to prevent redirect issues
+    const trimmedClientId = clientId.trim();
     const redirectUri = getRedirectUri();
     
     const params = new URLSearchParams({
-      client_id: clientId,
+      client_id: trimmedClientId,
       response_type: 'code',
       redirect_uri: redirectUri
     });
     
     console.log("Generated FreeAgent Auth URL:", `${FREEAGENT_AUTH_URL}?${params.toString()}`);
     console.log("Using redirect URI:", redirectUri);
+    console.log("Using client ID:", trimmedClientId);
     return `${FREEAGENT_AUTH_URL}?${params.toString()}`;
   },
   
   // Exchange the authorization code for access token
   async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<boolean> {
     try {
+      const trimmedClientId = clientId.trim();
+      const trimmedClientSecret = clientSecret.trim();
       const redirectUri = getRedirectUri();
-      console.log("Exchanging code for token with:", { code, clientId, clientSecret, redirectUri });
+      
+      console.log("Exchanging code for token with:", { 
+        code, 
+        clientId: trimmedClientId, 
+        clientSecret: '***', 
+        redirectUri 
+      });
       
       const params = new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
+        client_id: trimmedClientId,
+        client_secret: trimmedClientSecret,
         grant_type: 'authorization_code',
         code: code,
         redirect_uri: redirectUri
@@ -179,8 +190,8 @@ export const freeAgentApi = {
       
       // Save the tokens
       await this.saveCredentials({
-        clientId,
-        clientSecret,
+        clientId: trimmedClientId,
+        clientSecret: trimmedClientSecret,
         accessToken: data.access_token,
         refreshToken: data.refresh_token,
         tokenExpiry: Date.now() + (data.expires_in * 1000)
