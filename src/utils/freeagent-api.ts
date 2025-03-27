@@ -67,7 +67,11 @@ interface PreferencesTable {
 const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app";
 const FREEAGENT_API_URL = "https://api.sandbox.freeagent.com/v2";
 const FREEAGENT_TOKEN_URL = "https://api.sandbox.freeagent.com/v2/token_endpoint";
-const REDIRECT_URI = `${window.location.origin}/settings`;
+
+// Dynamically get the redirect URI based on the current origin
+const getRedirectUri = () => {
+  return `${window.location.origin}/settings`;
+};
 
 // This is a placeholder implementation with OAuth2 flow for FreeAgent
 export const freeAgentApi = {
@@ -129,27 +133,31 @@ export const freeAgentApi = {
   
   // Generate the OAuth authorization URL
   getAuthUrl(clientId: string): string {
+    const redirectUri = getRedirectUri();
+    
     const params = new URLSearchParams({
       client_id: clientId,
       response_type: 'code',
-      redirect_uri: REDIRECT_URI
+      redirect_uri: redirectUri
     });
     
     console.log("Generated FreeAgent Auth URL:", `${FREEAGENT_AUTH_URL}?${params.toString()}`);
+    console.log("Using redirect URI:", redirectUri);
     return `${FREEAGENT_AUTH_URL}?${params.toString()}`;
   },
   
   // Exchange the authorization code for access token
   async exchangeCodeForToken(code: string, clientId: string, clientSecret: string): Promise<boolean> {
     try {
-      console.log("Exchanging code for token with:", { code, clientId, clientSecret, redirectUri: REDIRECT_URI });
+      const redirectUri = getRedirectUri();
+      console.log("Exchanging code for token with:", { code, clientId, clientSecret, redirectUri });
       
       const params = new URLSearchParams({
         client_id: clientId,
         client_secret: clientSecret,
         grant_type: 'authorization_code',
         code: code,
-        redirect_uri: REDIRECT_URI
+        redirect_uri: redirectUri
       });
       
       const response = await fetch(FREEAGENT_TOKEN_URL, {

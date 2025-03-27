@@ -18,7 +18,7 @@ import {
 import { freeAgentApi } from "@/utils/freeagent-api";
 import { useToast } from "@/hooks/use-toast";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import { Loader2, ExternalLink, CheckCircle, AlertTriangle } from "lucide-react";
+import { Loader2, ExternalLink, CheckCircle, AlertTriangle, Globe } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 // Interface for preferences table
@@ -43,6 +43,12 @@ const Settings = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [oauthError, setOauthError] = useState<string | null>(null);
+  const [redirectUri, setRedirectUri] = useState("");
+  
+  useEffect(() => {
+    // Set the redirect URI for display purposes
+    setRedirectUri(`${window.location.origin}/settings`);
+  }, []);
   
   // Check for OAuth code or error in URL
   useEffect(() => {
@@ -263,6 +269,17 @@ const Settings = () => {
                       disabled={isConnected || isSubmitting}
                       placeholder="Your FreeAgent OAuth Secret"
                     />
+                  </div>
+                  
+                  <div className="rounded-lg bg-secondary/50 p-4 text-sm">
+                    <div className="flex items-start mb-2">
+                      <Globe className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0 text-muted-foreground" />
+                      <div>
+                        <p className="font-medium">Redirect URI for FreeAgent</p>
+                        <p className="mt-1 break-all font-mono text-xs">{redirectUri}</p>
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">Make sure this exact URI is added to the redirect URIs in your FreeAgent app settings.</p>
                   </div>
                   
                   {oauthError && (
