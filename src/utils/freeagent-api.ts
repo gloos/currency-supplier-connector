@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -42,6 +41,7 @@ interface PurchaseOrder {
   issueDate: string;
   items: PurchaseOrderItem[];
   total: number;
+  notes?: string;
 }
 
 interface PurchaseOrderItem {
@@ -82,7 +82,7 @@ interface PreferencesTable {
 }
 
 // Updated OAuth URLs based on FreeAgent API documentation
-// Using direct URLs instead of trying to embed them
+// Using sandbox URLs for testing
 const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app";
 const FREEAGENT_API_URL = "https://api.sandbox.freeagent.com/v2";
 const FREEAGENT_TOKEN_URL = "https://api.sandbox.freeagent.com/v2/token_endpoint";
@@ -99,37 +99,44 @@ const getRedirectUri = () => {
 export const freeAgentApi = {
   credentials: null as FreeAgentCredentials | null,
   
+  async loadCredentials(): Promise<FreeAgentCredentials | null> {
+    try {
+      const { data, error } = await supabase
+        .from('freeagent_credentials')
+        .select('*')
+        .single();
+        
+      if (error) {
+        console.error("Error loading FreeAgent credentials:", error);
+        return null;
+      }
+      
+      if (!data) {
+        console.log("No FreeAgent credentials found in database");
+        return null;
+      }
+      
+      const credentials: FreeAgentCredentials = {
+        clientId: data.client_id,
+        clientSecret: data.client_secret,
+        accessToken: data.access_token || undefined,
+        refreshToken: data.refresh_token || undefined,
+        tokenExpiry: data.token_expiry || undefined
+      };
+      
+      // Initialize the API with the loaded credentials
+      this.init(credentials);
+      return credentials;
+    } catch (error) {
+      console.error("Error loading FreeAgent credentials:", error);
+      return null;
+    }
+  },
+  
   init(credentials: FreeAgentCredentials) {
     this.credentials = credentials;
     console.log("FreeAgent API initialized with credentials", credentials);
     return this;
-  },
-  
-  // Get the stored credentials from localStorage or initialize empty
-  async loadCredentials(): Promise<FreeAgentCredentials | null> {
-    const { data, error } = await supabase
-      .from('freeagent_credentials')
-      .select('*')
-      .maybeSingle();
-      
-    if (error) {
-      console.error("Error loading FreeAgent credentials:", error);
-      return null;
-    }
-    
-    if (data) {
-      const credentials = data as FreeAgentCredentialsTable;
-      this.credentials = {
-        clientId: credentials.client_id,
-        clientSecret: credentials.client_secret,
-        accessToken: credentials.access_token || undefined,
-        refreshToken: credentials.refresh_token || undefined,
-        tokenExpiry: credentials.token_expiry || undefined
-      };
-      return this.credentials;
-    }
-    
-    return null;
   },
   
   // Save credentials to localStorage
@@ -313,58 +320,78 @@ export const freeAgentApi = {
   
   // Make authenticated request to FreeAgent API
   async apiRequest(endpoint: string, method: string = 'GET', body?: any): Promise<any> {
-    const hasValidToken = await this.ensureValidToken();
-    
-    if (!hasValidToken || !this.credentials?.accessToken) {
-      throw new Error("No valid access token available");
-    }
-    
-    const url = `${FREEAGENT_API_URL}${endpoint}`;
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Authorization': `Bearer ${this.credentials.accessToken}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json'
+    try {
+      const hasValidToken = await this.ensureValidToken();
+      
+      if (!hasValidToken || !this.credentials?.accessToken) {
+        console.error("No valid access token available. Current credentials:", this.credentials);
+        throw new Error("No valid access token available. Please reconnect to FreeAgent.");
       }
-    };
-    
-    if (body && (method === 'POST' || method === 'PUT')) {
-      options.body = JSON.stringify(body);
-    }
-    
-    console.log(`Making ${method} request to ${url}`);
-    const response = await fetch(url, options);
-    
-    // Log the response status
-    console.log(`Response status: ${response.status}`);
-    
-    // Try to parse the response as JSON
-    let data;
-    const contentType = response.headers.get('content-type');
-    if (contentType && contentType.includes('application/json')) {
-      data = await response.json();
-    } else {
-      const text = await response.text();
-      console.log('Response is not JSON:', text);
-      // Try to parse it anyway in case it's actually JSON but wrong content-type
-      try {
-        data = JSON.parse(text);
-      } catch (e) {
-        // Not JSON, use text as is
-        data = { text };
+      
+      const url = `${FREEAGENT_API_URL}${endpoint}`;
+      const options: RequestInit = {
+        method,
+        headers: {
+          'Authorization': `Bearer ${this.credentials.accessToken}`,
+          'Accept': 'application/json',
+          'Content-Type': 'application/json'
+        }
+      };
+      
+      if (body && (method === 'POST' || method === 'PUT')) {
+        options.body = JSON.stringify(body);
       }
+      
+      console.log(`Making ${method} request to ${url}`);
+      console.log("Using access token:", this.credentials.accessToken.substring(0, 10) + "...");
+      
+      const response = await fetch(url, options);
+      
+      // Log the response status and headers
+      console.log(`Response status: ${response.status}`);
+      console.log("Response headers:", Object.fromEntries(response.headers.entries()));
+      
+      // Try to parse the response as JSON
+      let data;
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        data = await response.json();
+      } else {
+        const text = await response.text();
+        console.log('Response is not JSON:', text);
+        // Try to parse it anyway in case it's actually JSON but wrong content-type
+        try {
+          data = JSON.parse(text);
+        } catch (e) {
+          // Not JSON, use text as is
+          data = { text };
+        }
+      }
+      
+      console.log(`Response data:`, data);
+      
+      if (!response.ok) {
+        const errorMessage = data.error_description || `API request failed: ${response.status}`;
+        console.error("API request error:", errorMessage, data);
+        
+        // If we get a 401, try to refresh the token and retry once
+        if (response.status === 401) {
+          console.log("Received 401, attempting to refresh token...");
+          const refreshed = await this.refreshAccessToken();
+          if (refreshed) {
+            console.log("Token refreshed successfully, retrying request...");
+            return this.apiRequest(endpoint, method, body);
+          }
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      return data;
+    } catch (error) {
+      console.error("API request failed:", error);
+      throw error;
     }
-    
-    console.log(`Response data:`, data);
-    
-    if (!response.ok) {
-      const errorMessage = data.error_description || `API request failed: ${response.status}`;
-      console.error("API request error:", errorMessage, data);
-      throw new Error(errorMessage);
-    }
-    
-    return data;
   },
   
   // Get contacts from FreeAgent
@@ -418,35 +445,79 @@ export const freeAgentApi = {
   
   async createBill(purchaseOrder: PurchaseOrder): Promise<Bill> {
     try {
+      // Ensure we have valid credentials
+      if (!this.credentials?.accessToken) {
+        const credentials = await this.loadCredentials();
+        if (!credentials?.accessToken) {
+          throw new Error("FreeAgent credentials not found. Please connect to FreeAgent in settings.");
+        }
+      }
+      
       // Create bill in FreeAgent
       console.log("Creating bill in FreeAgent for PO:", purchaseOrder);
-      
-      // In a real implementation, this would call the FreeAgent API to create a bill
-      // For now we'll use the existing simulation
       
       // Extract contact URL from supplierRef if it's a complete URL
       const contactUrl = purchaseOrder.supplierRef;
       
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      // Prepare the bill payload according to FreeAgent API
+      const billPayload = {
+        bill: {
+          contact: contactUrl,
+          dated_on: purchaseOrder.issueDate.split('T')[0],
+          due_on: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+          reference: purchaseOrder.reference,
+          comments: purchaseOrder.notes || 'Purchase Order',
+          currency: purchaseOrder.currencyCode,
+          bill_items_attributes: purchaseOrder.items.map((item, index) => ({
+            position: index + 1,
+            item_type: 'Products',
+            description: item.description,
+            quantity: item.quantity,
+            price: item.price,
+            category: 'https://api.sandbox.freeagent.com/v2/categories/1' // Default category for testing
+          }))
+        }
+      };
+
+      console.log("Sending bill payload to FreeAgent:", billPayload);
+
+      // Make the API call to create the bill
+      const response = await this.apiRequest('/bills', 'POST', billPayload);
       
+      console.log("FreeAgent bill creation response:", response);
+      
+      if (!response.bill) {
+        console.error("Invalid response from FreeAgent:", response);
+        throw new Error('No bill data received from FreeAgent');
+      }
+
       const bill: Bill = {
-        reference: purchaseOrder.reference,
-        dated_on: new Date().toISOString().split('T')[0],
-        due_on: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
-        currency: purchaseOrder.currencyCode,
-        supplier_id: contactUrl,
-        total_value: purchaseOrder.total,
-        status: "Draft"
+        reference: response.bill.reference,
+        dated_on: response.bill.dated_on,
+        due_on: response.bill.due_on,
+        currency: response.bill.currency,
+        supplier_id: response.bill.contact,
+        total_value: response.bill.total_value,
+        status: response.bill.status
       };
       
       toast.success("Bill created in FreeAgent", {
-        description: `Reference: ${bill.reference}`
+        description: `Reference: ${bill.reference} (${bill.currency})`
       });
       
       return bill;
     } catch (error) {
       console.error("Error creating bill in FreeAgent:", error);
-      toast.error("Failed to create bill in FreeAgent");
+      
+      // Provide more detailed error message to the user
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : "Failed to create bill in FreeAgent. Please check your connection and try again.";
+      
+      toast.error("Failed to create bill in FreeAgent", {
+        description: errorMessage
+      });
+      
       throw error;
     }
   },
