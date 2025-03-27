@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -156,11 +155,11 @@ export const freeAgentApi = {
       const trimmedClientSecret = clientSecret.trim();
       const redirectUri = getRedirectUri();
       
-      console.log("Exchanging code for token with:", { 
+      console.log("Full OAuth Token Exchange Details:", { 
         code, 
         clientId: trimmedClientId, 
-        clientSecret: '***', 
-        redirectUri 
+        redirectUri,
+        authUrl: FREEAGENT_TOKEN_URL
       });
       
       const params = new URLSearchParams({
@@ -171,6 +170,8 @@ export const freeAgentApi = {
         redirect_uri: redirectUri
       });
       
+      console.log("Request Parameters:", Object.fromEntries(params));
+      
       const response = await fetch(FREEAGENT_TOKEN_URL, {
         method: 'POST',
         headers: {
@@ -180,12 +181,25 @@ export const freeAgentApi = {
         body: params.toString()
       });
       
-      console.log("Token exchange response status:", response.status);
+      console.log("Token Exchange Response Status:", response.status);
       const data = await response.json();
-      console.log("Token exchange response data:", data);
+      console.log("Token Exchange Response Data:", data);
       
       if (!response.ok) {
-        throw new Error(data.error_description || 'Failed to exchange code for token');
+        const errorMessage = data.error_description || 
+          `Token exchange failed with status ${response.status}`;
+        
+        toast.error("FreeAgent Authorization Failed", {
+          description: errorMessage
+        });
+        
+        console.error("OAuth Token Exchange Error:", {
+          status: response.status,
+          errorDescription: errorMessage,
+          fullResponse: data
+        });
+        
+        throw new Error(errorMessage);
       }
       
       // Save the tokens
@@ -199,7 +213,12 @@ export const freeAgentApi = {
       
       return true;
     } catch (error) {
-      console.error("Error exchanging code for token:", error);
+      console.error("Complete OAuth Token Exchange Error:", error);
+      
+      toast.error("Authorization Error", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
+      
       throw error;
     }
   },
