@@ -16,6 +16,24 @@ interface Supplier {
   email: string;
 }
 
+interface Contact {
+  url: string;
+  contact_name_on_invoices: boolean;
+  created_at: string;
+  updated_at: string;
+  organisation_name: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  billing_email: string;
+  phone_number: string;
+  mobile: string;
+  website: string;
+  currency: string;
+  status: string;
+  uses_contact_invoice_sequence: boolean;
+}
+
 interface PurchaseOrder {
   id: string;
   supplierRef: string;
@@ -315,26 +333,78 @@ export const freeAgentApi = {
       options.body = JSON.stringify(body);
     }
     
+    console.log(`Making ${method} request to ${url}`);
     const response = await fetch(url, options);
-    const data = await response.json();
+    
+    // Log the response status
+    console.log(`Response status: ${response.status}`);
+    
+    // Try to parse the response as JSON
+    let data;
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('application/json')) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      console.log('Response is not JSON:', text);
+      // Try to parse it anyway in case it's actually JSON but wrong content-type
+      try {
+        data = JSON.parse(text);
+      } catch (e) {
+        // Not JSON, use text as is
+        data = { text };
+      }
+    }
+    
+    console.log(`Response data:`, data);
     
     if (!response.ok) {
-      throw new Error(data.error_description || `API request failed: ${response.status}`);
+      const errorMessage = data.error_description || `API request failed: ${response.status}`;
+      console.error("API request error:", errorMessage, data);
+      throw new Error(errorMessage);
     }
     
     return data;
   },
   
+  // Get contacts from FreeAgent
+  async getContacts(): Promise<Contact[]> {
+    try {
+      console.log('Fetching contacts from FreeAgent');
+      const data = await this.apiRequest('/contacts');
+      console.log('Contacts response:', data);
+      
+      if (!data.contacts) {
+        console.warn('No contacts found in response', data);
+        return [];
+      }
+      
+      return data.contacts;
+    } catch (error) {
+      console.error("Error fetching contacts from FreeAgent:", error);
+      toast.error("Failed to fetch contacts", {
+        description: error instanceof Error ? error.message : "Unknown error occurred"
+      });
+      // Return empty array on error
+      return [];
+    }
+  },
+  
+  // Convert Contact to Supplier format
+  contactToSupplier(contact: Contact): Supplier {
+    return {
+      id: contact.url,
+      name: contact.organisation_name || `${contact.first_name} ${contact.last_name}`.trim(),
+      email: contact.email || contact.billing_email || ''
+    };
+  },
+  
   async getSuppliers(): Promise<Supplier[]> {
     try {
-      const data = await this.apiRequest('/contacts');
+      const contacts = await this.getContacts();
       
       // Convert FreeAgent contacts to our Supplier format
-      return data.contacts.map((contact: any) => ({
-        id: contact.url,
-        name: contact.organisation_name || contact.first_name + ' ' + contact.last_name,
-        email: contact.email
-      }));
+      return contacts.map(contact => this.contactToSupplier(contact));
     } catch (error) {
       console.error("Error fetching suppliers from FreeAgent:", error);
       // For demo purposes, return mock data if API fails
@@ -351,8 +421,12 @@ export const freeAgentApi = {
       // Create bill in FreeAgent
       console.log("Creating bill in FreeAgent for PO:", purchaseOrder);
       
-      // In a real implementation, this would make an API request
-      // For now, simulate API call
+      // In a real implementation, this would call the FreeAgent API to create a bill
+      // For now we'll use the existing simulation
+      
+      // Extract contact URL from supplierRef if it's a complete URL
+      const contactUrl = purchaseOrder.supplierRef;
+      
       await new Promise(resolve => setTimeout(resolve, 1500));
       
       const bill: Bill = {
@@ -360,7 +434,7 @@ export const freeAgentApi = {
         dated_on: new Date().toISOString().split('T')[0],
         due_on: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         currency: purchaseOrder.currencyCode,
-        supplier_id: purchaseOrder.supplierRef,
+        supplier_id: contactUrl,
         total_value: purchaseOrder.total,
         status: "Draft"
       };

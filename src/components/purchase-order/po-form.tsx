@@ -1,6 +1,7 @@
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { 
   Card, 
   CardContent, 
@@ -16,9 +17,16 @@ import CurrencySelect from "@/components/ui/currency-select";
 import BlurCard from "@/components/ui/blur-card";
 import { useToast } from "@/hooks/use-toast";
 import { CurrencyCode, formatCurrency } from "@/utils/currency";
-import { Plus, Trash, Send, FileText } from "lucide-react";
+import { Plus, Trash, Send, User, Mail } from "lucide-react";
 import { freeAgentApi } from "@/utils/freeagent-api";
 import { emailService } from "@/utils/email-service";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 interface LineItem {
   id: string;
@@ -27,19 +35,52 @@ interface LineItem {
   unitPrice: number;
 }
 
+interface Supplier {
+  id: string;
+  name: string;
+  email: string;
+}
+
 const POForm = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [reference, setReference] = useState("");
-  const [supplierName, setSupplierName] = useState("");
-  const [supplierEmail, setSupplierEmail] = useState("");
-  const [currency, setCurrency] = useState<CurrencyCode>("USD");
+  const [selectedSupplierId, setSelectedSupplierId] = useState("");
   const [notes, setNotes] = useState("");
+  const [currency, setCurrency] = useState<CurrencyCode>("USD");
   const [lineItems, setLineItems] = useState<LineItem[]>([
     { id: Date.now().toString(), description: "", quantity: 1, unitPrice: 0 }
   ]);
+
+  // Fetch suppliers from FreeAgent
+  const { 
+    data: suppliers = [],
+    isLoading: isLoadingSuppliers,
+    error: suppliersError
+  } = useQuery({
+    queryKey: ["suppliers"],
+    queryFn: async () => {
+      return await freeAgentApi.getSuppliers();
+    }
+  });
+
+  // Show error toast if suppliers fetch fails
+  useEffect(() => {
+    if (suppliersError) {
+      toast({
+        title: "Error",
+        description: suppliersError instanceof Error 
+          ? suppliersError.message 
+          : "Failed to load suppliers",
+        variant: "destructive"
+      });
+    }
+  }, [suppliersError, toast]);
+
+  // Get the selected supplier details
+  const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
   const addLineItem = () => {
     setLineItems([
@@ -73,10 +114,10 @@ const POForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!reference || !supplierName || !supplierEmail) {
+    if (!reference || !selectedSupplierId) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please fill in all required fields and select a supplier",
         variant: "destructive"
       });
       return;
@@ -99,13 +140,20 @@ const POForm = () => {
     setIsSubmitting(true);
     
     try {
+      // Get supplier details
+      const supplier = suppliers.find(s => s.id === selectedSupplierId);
+      
+      if (!supplier) {
+        throw new Error("Selected supplier not found");
+      }
+      
       // Create purchase order object
       const purchaseOrder = {
         id: Date.now().toString(),
         reference,
-        supplierRef: "sup_1", // In a real app, this would come from supplier selection
-        supplierName,
-        supplierEmail,
+        supplierRef: supplier.id, // Use the full URL/ID from FreeAgent
+        supplierName: supplier.name,
+        supplierEmail: supplier.email,
         currencyCode: currency,
         issueDate: new Date().toISOString(),
         items: lineItems.map(item => ({
@@ -132,12 +180,19 @@ const POForm = () => {
         total: purchaseOrder.total
       });
       
-      // Send email to supplier
-      await emailService.sendPurchaseOrder(
-        supplierEmail,
-        reference,
-        `Purchase Order with ${lineItems.length} items, total: ${formatCurrency(calculateTotal(), currency)}`
-      );
+      // Send email to supplier if email is available
+      if (supplier.email) {
+        await emailService.sendPurchaseOrder(
+          supplier.email,
+          reference,
+          `Purchase Order with ${lineItems.length} items, total: ${formatCurrency(calculateTotal(), currency)}`
+        );
+      } else {
+        toast({
+          title: "Warning",
+          description: "Supplier has no email address. PO created but not sent."
+        });
+      }
       
       toast({
         title: "Success",
@@ -182,27 +237,49 @@ const POForm = () => {
               </div>
               
               <div>
-                <Label htmlFor="supplier">Supplier Name *</Label>
-                <Input
-                  id="supplier"
-                  placeholder="Supplier name"
-                  value={supplierName}
-                  onChange={(e) => setSupplierName(e.target.value)}
-                  required
-                />
+                <Label htmlFor="supplier">Supplier *</Label>
+                <Select 
+                  value={selectedSupplierId} 
+                  onValueChange={setSelectedSupplierId}
+                >
+                  <SelectTrigger id="supplier" className="w-full">
+                    <SelectValue placeholder="Select a supplier" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {isLoadingSuppliers ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">
+                        Loading suppliers...
+                      </div>
+                    ) : suppliers.length === 0 ? (
+                      <div className="p-2 text-center text-sm text-muted-foreground">
+                        No suppliers found
+                      </div>
+                    ) : (
+                      suppliers.map((supplier) => (
+                        <SelectItem key={supplier.id} value={supplier.id}>
+                          {supplier.name}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
               </div>
               
-              <div>
-                <Label htmlFor="email">Supplier Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="supplier@example.com"
-                  value={supplierEmail}
-                  onChange={(e) => setSupplierEmail(e.target.value)}
-                  required
-                />
-              </div>
+              {selectedSupplier && (
+                <div className="p-3 bg-secondary/40 rounded-md">
+                  <div className="text-sm font-medium">Selected Supplier</div>
+                  <div className="mt-2 flex items-center text-sm text-muted-foreground">
+                    <User className="h-4 w-4 mr-2" />
+                    {selectedSupplier.name}
+                  </div>
+                  {selectedSupplier.email && (
+                    <div className="mt-1 flex items-center text-sm text-muted-foreground">
+                      <Mail className="h-4 w-4 mr-2" />
+                      {selectedSupplier.email}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="space-y-4">
@@ -334,7 +411,7 @@ const POForm = () => {
           </Button>
           <Button
             type="submit"
-            disabled={isSubmitting}
+            disabled={isSubmitting || !selectedSupplierId}
             className="min-w-32"
           >
             {isSubmitting ? (
