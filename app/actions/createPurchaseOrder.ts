@@ -1,3 +1,5 @@
+"use server"; // Directive to mark this as a server-only module
+
 import { createClient } from '@supabase/supabase-js';
 const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY!);
 
@@ -52,16 +54,27 @@ export async function handleCreatePurchaseOrder(purchaseOrderData: any) {
       due_on: purchaseOrderData.dueDate,
       reference: `PO-${insertedOrder?.id || purchaseOrderData.reference}`,
       comments: purchaseOrderData.comments || 'Purchase Order',
-      bill_items_attributes: purchaseOrderData.items.map((item: any, index: number) => ({
-        position: index + 1,
-        item_type: 'Products',
-        description: item.description,
-        quantity: item.quantity,
-        price: item.unitPrice,
-        category: freeagentCategoryUrl,
-      })),
+      currency: purchaseOrderData.currency,
+      bill_items: purchaseOrderData.items.map((item: any, index: number) => {
+        // Calculate total value for the item
+        const totalValue = (item.quantity * item.unitPrice).toFixed(2); // Ensure 2 decimal places
+        
+        return {
+          description: item.description,
+          // Remove quantity, price_per_unit, unit
+          // quantity: item.quantity.toString(),
+          // price_per_unit: item.unitPrice.toString(),
+          // unit: 'unit',
+          total_value: totalValue.toString(), // Send total_value as a string
+          category: freeagentCategoryUrl,
+          sales_tax_rate: "0.0", // Keep tax rate
+          sales_tax_status: "OUT_OF_SCOPE" 
+        }
+      }),
     },
   };
+
+  console.log("Constructed FreeAgent Payload:", JSON.stringify(freeagentBillPayload, null, 2));
 
   try {
     const freeagentApiUrl = 'https://api.freeagent.com/v2/bills';

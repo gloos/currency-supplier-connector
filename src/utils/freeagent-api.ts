@@ -345,7 +345,8 @@ export const freeAgentApi = {
     }
   },
   
-  async createBill(purchaseOrder: PurchaseOrder): Promise<Bill> {
+  // Uncommenting the client-side createBill function
+  async createBill(purchaseOrder: PurchaseOrder): Promise<Bill> { 
     try {
       // Ensure we have valid credentials
       if (!this.credentials?.accessToken) {
@@ -373,47 +374,44 @@ export const freeAgentApi = {
           reference: purchaseOrder.reference, // This is the PO number
           comments: purchaseOrder.notes || 'Purchase Order',
           currency: purchaseOrder.currencyCode,
-          bill_items_attributes: purchaseOrder.items.map((item, index) => {
-            // Basic validation before creating the item payload
+          // Use bill_items and the structure determined from docs
+          bill_items: purchaseOrder.items.map((item, index) => {
+            // Validate data before creating payload
             if (typeof item.price !== 'number' || typeof item.quantity !== 'number') {
               console.error("Invalid item data:", item);
               throw new FreeAgentError(`Invalid data for item ${index + 1}: price or quantity is not a number.`);
             }
+            // Calculate total value
+            const totalValue = (item.quantity * item.price).toFixed(2);
 
             return {
-              category: 'https://api.sandbox.freeagent.com/v2/categories/150',
-              description: item.description || 'Item', // Ensure description is not empty
-              quantity: item.quantity.toString(),
-              unit: 'unit',
-              // Changed price to price_per_unit as per API docs
-              price_per_unit: item.price.toString(),
-              // Removed total_value as it's read-only and calculated by FreeAgent
-              sales_tax_rate: "0.0",
-              sales_tax_status: "TAXABLE"
+              // Minimal fields based on create example
+              category: 'https://api.sandbox.freeagent.com/v2/categories/250', // Use the placeholder category
+              description: item.description || 'Item', 
+              total_value: totalValue.toString(), // Send total_value
+              sales_tax_rate: "0.0" // Keep tax rate
+              // Removed: quantity, unit, price_per_unit, sales_tax_status
             };
           })
         }
       };
 
       console.log("Sending bill payload to FreeAgent:", JSON.stringify(billPayload, null, 2));
-      // Inside createBill, right before the apiRequest call:
       console.log("Final billPayload being sent:", JSON.stringify(billPayload, null, 2));
       const responseData = await this.apiRequest('/bills', 'POST', billPayload);
-      // Make the API call to create the bill
-      const response = await this.apiRequest('/bills', 'POST', billPayload);
       
-      if (!response.bill) {
+      if (!responseData.bill) {
         throw new FreeAgentError('No bill data received from FreeAgent');
       }
 
       const bill: Bill = {
-        reference: response.bill.reference,
-        dated_on: response.bill.dated_on,
-        due_on: response.bill.due_on,
-        currency: response.bill.currency,
-        supplier_id: response.bill.contact,
-        total_value: response.bill.total_value,
-        status: response.bill.status
+        reference: responseData.bill.reference,
+        dated_on: responseData.bill.dated_on,
+        due_on: responseData.bill.due_on,
+        currency: responseData.bill.currency,
+        supplier_id: responseData.bill.contact,
+        total_value: responseData.bill.total_value,
+        status: responseData.bill.status
       };
       
       toast.success("Bill created in FreeAgent", {

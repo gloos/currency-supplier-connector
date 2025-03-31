@@ -18,7 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { CurrencyCode, formatCurrency } from "@/utils/currency";
 import { Plus, Trash, Send, User, Mail } from "lucide-react";
 import { freeAgentApi } from "@/utils/freeagent-api";
-import { emailService } from "@/utils/email-service";
+import { PurchaseOrder } from "@/types/freeagent";
 import {
   Select,
   SelectContent,
@@ -125,101 +125,74 @@ const POForm = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
+    // Remove the temporary disabling logic
+    // console.log("Form submitted, but action call is disabled for testing.");
+    // toast({ title: "Test Submit", description: "Action call disabled."}) 
+    // setIsSubmitting(true);
+    // return; // Optionally return early 
+
+    // Restore the try/catch block logic
     if (!isFreeAgentConnected) {
-      toast({
-        title: "Error",
-        description: "Please connect to FreeAgent in settings before creating purchase orders",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Please connect to FreeAgent..." });
       return;
     }
-    
     if (!reference || !selectedSupplierId) {
-      toast({
-        title: "Error",
-        description: "Please fill in all required fields and select a supplier",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Please fill in required fields..." });
       return;
     }
-    
-    // Check if line items are valid
     const invalidItems = lineItems.filter(
       item => !item.description || item.quantity <= 0 || item.unitPrice <= 0
     );
-    
     if (invalidItems.length > 0) {
-      toast({
-        title: "Error",
-        description: "Please complete all line items with valid values",
-        variant: "destructive"
-      });
+      toast({ title: "Error", description: "Please complete line items..." });
       return;
     }
     
     setIsSubmitting(true);
     
     try {
-      // Get supplier details
+      // Get supplier details (ensure Supplier type is defined/imported)
       const supplier = suppliers.find(s => s.id === selectedSupplierId);
-      
-      if (!supplier) {
-        throw new Error("Selected supplier not found");
-      }
-      
-      // Create purchase order object
-      const purchaseOrder = {
-        id: Date.now().toString(),
+      if (!supplier) throw new Error("Selected supplier not found");
+
+      // Create purchase order object for the freeAgentApi.createBill function
+      // This structure matches what createBill expects
+      const purchaseOrderPayload: PurchaseOrder = {
+        id: Date.now().toString(), // ID might not be needed by FreeAgent but helps locally
         reference,
-        supplierRef: supplier.id, // Use the full URL/ID from FreeAgent
-        supplierName: supplier.name,
-        supplierEmail: supplier.email,
+        supplierRef: supplier.id, // FreeAgent Contact URL/ID
         currencyCode: currency,
         issueDate: new Date().toISOString(),
         items: lineItems.map(item => ({
           description: item.description,
           quantity: item.quantity,
-          price: item.unitPrice,
-          total: item.quantity * item.unitPrice
+          price: item.unitPrice, // createBill expects 'price'
+          total: item.quantity * item.unitPrice // createBill expects 'total'
         })),
         total: calculateTotal(),
         notes
       };
-      
-      // Create bill in FreeAgent
-      await freeAgentApi.createBill(purchaseOrder);
-      
-      // Send email to supplier if email is available
-      if (supplier.email) {
-        await emailService.sendPurchaseOrder(
-          supplier.email,
-          reference,
-          `Purchase Order with ${lineItems.length} items, total: ${formatCurrency(calculateTotal(), currency)}`
-        );
-      } else {
-        toast({
-          title: "Warning",
-          description: "Supplier has no email address. PO created but not sent."
-        });
-      }
-      
-      toast({
-        title: "Success",
-        description: "Purchase order created successfully"
-      });
-      
-      // Navigate to the PO detail page
+
+      console.log("Calling freeAgentApi.createBill with payload:", purchaseOrderPayload);
+
+      // Call the client-side freeAgentApi function
+      const createdBill = await freeAgentApi.createBill(purchaseOrderPayload);
+
+      // Handle success (e.g., show toast, navigate)
+      // The toast is already handled inside createBill on success
+      console.log("Client-side bill creation successful:", createdBill);
       setTimeout(() => {
         navigate("/");
       }, 1500);
-      
+
+      // TODO: Add separate logic here to save PO details to Supabase 
+      // using the client library and RLS. 
+      console.warn("Supabase save logic not implemented yet in this flow.");
+
     } catch (error) {
-      console.error("Error creating purchase order:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create purchase order",
-        variant: "destructive"
-      });
+       console.error("Error creating purchase order (client-side flow):", error);
+       // Error toast is handled inside createBill on failure
+       // Optionally add more specific handling here if needed
     } finally {
       setIsSubmitting(false);
     }
