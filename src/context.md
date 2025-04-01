@@ -1,5 +1,9 @@
 Context & Rules for Cursor AI Assistant: Purchase Order Tool
 
+Stack
+React Router
+Vite
+
 1. Project Overview
 
 Goal: Build a simple Purchase Order (PO) tool.

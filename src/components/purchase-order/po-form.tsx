@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { 
   Card, 
@@ -27,6 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Link } from "react-router-dom";
+import { supabase } from '@/integrations/supabase/client';
 
 interface LineItem {
   id: string;
@@ -43,6 +44,7 @@ interface Supplier {
 
 const POForm = () => {
   const navigate = useNavigate();
+  const params = useParams();
   const { toast } = useToast();
   
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -54,6 +56,9 @@ const POForm = () => {
     { id: Date.now().toString(), description: "", quantity: 1, unitPrice: 0 }
   ]);
   const [isFreeAgentConnected, setIsFreeAgentConnected] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [companyId, setCompanyId] = useState<string | null>(null);
 
   // Check FreeAgent connection status
   useEffect(() => {
@@ -93,6 +98,28 @@ const POForm = () => {
   // Get the selected supplier details
   const selectedSupplier = suppliers.find(s => s.id === selectedSupplierId);
 
+  // Fetch company ID on component mount
+  useEffect(() => {
+    const fetchCompanyId = async () => {
+      try {
+        const { data: company } = await supabase
+          .from('companies')
+          .select('id')
+          .eq('slug', params.companySlug)
+          .single();
+
+        if (company) {
+          setCompanyId(company.id);
+        }
+      } catch (error) {
+        console.error('Error fetching company:', error);
+        setError('Failed to load company information');
+      }
+    };
+
+    fetchCompanyId();
+  }, [params.companySlug]);
+
   const addLineItem = () => {
     setLineItems([
       ...lineItems, 
@@ -124,33 +151,30 @@ const POForm = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Remove the temporary disabling logic
-    // console.log("Form submitted, but action call is disabled for testing.");
-    // toast({ title: "Test Submit", description: "Action call disabled."}) 
-    // setIsSubmitting(true);
-    // return; // Optionally return early 
+    setError(null);
+    setLoading(true);
 
-    // Restore the try/catch block logic
-    if (!isFreeAgentConnected) {
-      toast({ title: "Error", description: "Please connect to FreeAgent..." });
-      return;
-    }
-    if (!reference || !selectedSupplierId) {
-      toast({ title: "Error", description: "Please fill in required fields..." });
-      return;
-    }
-    const invalidItems = lineItems.filter(
-      item => !item.description || item.quantity <= 0 || item.unitPrice <= 0
-    );
-    if (invalidItems.length > 0) {
-      toast({ title: "Error", description: "Please complete line items..." });
-      return;
-    }
-    
-    setIsSubmitting(true);
-    
     try {
+      if (!companyId) {
+        throw new Error('Company information not loaded');
+      }
+
+      if (!isFreeAgentConnected) {
+        toast({ title: "Error", description: "Please connect to FreeAgent..." });
+        return;
+      }
+      if (!reference || !selectedSupplierId) {
+        toast({ title: "Error", description: "Please fill in required fields..." });
+        return;
+      }
+      const invalidItems = lineItems.filter(
+        item => !item.description || item.quantity <= 0 || item.unitPrice <= 0
+      );
+      if (invalidItems.length > 0) {
+        toast({ title: "Error", description: "Please complete line items..." });
+        return;
+      }
+      
       // Get supplier details (ensure Supplier type is defined/imported)
       const supplier = suppliers.find(s => s.id === selectedSupplierId);
       if (!supplier) throw new Error("Selected supplier not found");
@@ -176,25 +200,29 @@ const POForm = () => {
       console.log("Calling freeAgentApi.createBill with payload:", purchaseOrderPayload);
 
       // Call the client-side freeAgentApi function
-      const createdBill = await freeAgentApi.createBill(purchaseOrderPayload);
+      const bill = await freeAgentApi.createBill(purchaseOrderPayload);
 
-      // Handle success (e.g., show toast, navigate)
-      // The toast is already handled inside createBill on success
-      console.log("Client-side bill creation successful:", createdBill);
-      setTimeout(() => {
-        navigate("/");
-      }, 1500);
+      // Save to Supabase with company_id
+      const { error: supabaseError } = await supabase
+        .from('purchase_orders')
+        .insert({
+          ...purchaseOrderPayload,
+          company_id: companyId,
+          freeagent_bill_id: bill.reference,
+          created_at: new Date().toISOString()
+        });
 
-      // TODO: Add separate logic here to save PO details to Supabase 
-      // using the client library and RLS. 
-      console.warn("Supabase save logic not implemented yet in this flow.");
+      if (supabaseError) throw supabaseError;
+
+      // Redirect to the company's purchase orders list
+      navigate(`/company/${params.companySlug}/purchase-orders`);
 
     } catch (error) {
        console.error("Error creating purchase order (client-side flow):", error);
-       // Error toast is handled inside createBill on failure
-       // Optionally add more specific handling here if needed
+       setError(error instanceof Error ? error.message : 'Failed to create purchase order');
     } finally {
       setIsSubmitting(false);
+      setLoading(false);
     }
   };
 
