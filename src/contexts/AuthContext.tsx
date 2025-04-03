@@ -1,8 +1,18 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+// src/contexts/AuthContext.tsx
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  ReactNode,
+} from 'react';
 import { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
+// --- Interfaces ---
 interface Company {
   id: string;
   name: string;
@@ -13,125 +23,151 @@ interface UserWithCompany extends User {
   company?: Company;
 }
 
+// --- Context Type Definition ---
+// Define the shape of the context value
 type AuthContextType = {
   user: UserWithCompany | null;
   session: Session | null;
-  loading: boolean;
+  loadingAuth: boolean;
+  loadingCompany: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string, fullName: string) => Promise<void>;
+  signUp: (
+    email: string,
+    password: string,
+    fullName: string,
+    companyName: string
+  ) => Promise<void>;
   signOut: () => Promise<void>;
 };
 
-// Add Database function types
-type Database = {
-  public: {
-    Functions: {
-      get_user_company: {
-        Args: { p_user_id: string };
-        Returns: Company;
-      };
-    };
-  };
-};
-
+// --- Create the Context ---
+// Initialize with undefined or a default structure matching AuthContextType
+// Using undefined is common to force check in the hook
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+// --- Custom Hook ---
+// Define and export the hook separately *before* the Provider
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    // This error check is crucial
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+// --- AuthProvider Component ---
+// Export the Provider component as the default or named export
+export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<UserWithCompany | null>(null);
   const [session, setSession] = useState<Session | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [loadingCompany, setLoadingCompany] = useState(true);
   const { toast } = useToast();
+  const isInitialLoad = useRef(true);
 
-  const fetchUserCompany = async (userId: string) => {
-    try {
-      console.log('Fetching company data for user:', userId);
-      
-      const { data, error } = await supabase
-        .from('company_users')
-        .select(`
-          company:companies (
-            id,
-            name,
-            slug
-          )
-        `)
-        .eq('user_id', userId)
-        .maybeSingle();
+  // --- Fetch User's Company Association ---
+  const fetchUserCompany = useCallback(
+    async (userId: string): Promise<Company | null> => {
+      if (!userId) return null;
+      try {
+        // console.log('AuthContext: Fetching company data for user:', userId); // Reduce noise?
+        const { data, error } = await supabase
+          .from('company_users')
+          .select(`company:companies(id, name, slug)`)
+          .eq('user_id', userId)
+          .maybeSingle();
 
-      if (error) {
-        console.error('Error fetching user company:', error);
+        if (error) {
+          console.error('AuthContext: Error fetching user company:', error);
+          return null;
+        }
+        if (!data?.company) {
+          // console.warn('AuthContext: No company association found for user:', userId); // Reduce noise?
+          return null;
+        }
+        // console.log('AuthContext: Company data received:', data.company); // Reduce noise?
+        return data.company as Company;
+      } catch (error) {
+        console.error('AuthContext: Exception fetching user company:', error);
         return null;
       }
+    },
+    []
+  );
 
-      if (!data?.company) {
-        console.log('No company found for user');
-        return null;
-      }
+  // --- Update User and Company State ---
+  const updateUserState = useCallback(
+    async (currentSession: Session | null, source: string) => {
+      // console.log(`AuthContext: Updating user state (from ${source}). Session present:`, !!currentSession); // Reduce noise?
+      const shouldFetchCompany = !!currentSession?.user;
+      setLoadingCompany(shouldFetchCompany);
 
-      const company = data.company as Company;
-      console.log('Company data received:', company);
-      return company;
-    } catch (error) {
-      console.error('Exception fetching user company:', error);
-      return null;
-    }
-  };
+      let fetchedCompany: Company | null = null;
+      let userWithCompany: UserWithCompany | null = null;
 
-  const updateUserState = async (currentSession: Session | null) => {
-    console.log('Updating user state with session:', currentSession?.user?.id);
-    try {
-      if (currentSession?.user) {
-        const company = await fetchUserCompany(currentSession.user.id);
-        const userWithCompany = {
-          ...currentSession.user,
-          company: company || undefined
-        };
+      try {
+        if (shouldFetchCompany) {
+          fetchedCompany = await fetchUserCompany(currentSession!.user!.id);
+          userWithCompany = {
+            ...currentSession!.user!,
+            company: fetchedCompany || undefined,
+          };
+          // console.log(`AuthContext: (${source}) User state derived. Company found:`, !!fetchedCompany); // Reduce noise?
+        } else {
+          // console.log(`AuthContext: (${source}) User state cleared (no session).`); // Reduce noise?
+        }
         setUser(userWithCompany);
         setSession(currentSession);
-        console.log('User state updated with company:', company);
-      } else {
-        setUser(null);
-        setSession(null);
-        console.log('User state cleared - no session');
-      }
-    } catch (error) {
-      console.error('Error updating user state:', error);
-      if (currentSession?.user) {
-        setUser({ ...currentSession.user, company: undefined });
-        setSession(currentSession);
-      } else {
-        setUser(null);
-        setSession(null);
-      }
-    }
-  };
 
+      } catch (error) {
+        console.error(`AuthContext: (${source}) Error processing user state update:`, error);
+        setUser(currentSession?.user ? { ...currentSession.user, company: undefined } : null);
+        setSession(currentSession);
+      } finally {
+        if (shouldFetchCompany) {
+          setLoadingCompany(false);
+          // console.log(`AuthContext: (${source}) Company loading finished.`); // Reduce noise?
+        }
+      }
+    },
+    [fetchUserCompany]
+  );
+
+  // --- Effect for Initial Load & Auth State Changes ---
   useEffect(() => {
     let mounted = true;
+    // console.log('AuthContext: useEffect mounting. Setting loading states true.'); // Reduce noise?
+    setLoadingAuth(true);
+    setLoadingCompany(true);
+    isInitialLoad.current = true;
 
     const setupAuth = async () => {
       try {
-        console.log('Setting up auth...');
+        // console.log('AuthContext: Initializing auth - calling getSession...'); // Reduce noise?
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
-        
-        if (error) {
-          console.error('Error getting session:', error);
-          throw error;
-        }
 
-        if (mounted) {
-          await updateUserState(currentSession);
+        if (!mounted) return;
+
+        if (error) {
+          console.error('AuthContext: Error during initial getSession:', error);
+        } else {
+            // console.log('AuthContext: Initial getSession completed. Session present:', !!currentSession); // Reduce noise?
         }
+        await updateUserState(currentSession, 'initialLoad');
+
       } catch (error) {
-        console.error('Setup auth error:', error);
+        console.error('AuthContext: Unexpected error during setupAuth:', error);
         if (mounted) {
           setUser(null);
           setSession(null);
+          setLoadingCompany(false);
         }
       } finally {
         if (mounted) {
-          setLoading(false);
-          console.log('Auth setup complete, loading set to false');
+          setLoadingAuth(false);
+          isInitialLoad.current = false;
+          // console.log('AuthContext: Initial auth loading finished.'); // Reduce noise?
         }
       }
     };
@@ -140,11 +176,26 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
-        console.log('Auth state changed:', event);
-        if (mounted) {
-          await updateUserState(currentSession);
+        if (!mounted) return;
+
+        if (isInitialLoad.current && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
+             // console.log(`AuthContext: Ignoring event '${event}' because initial load is still flagged.`); // Reduce noise?
+             // If initial load *just* finished, ensure loading states are false
+             if (!loadingAuth) isInitialLoad.current = false;
+             return;
         }
-        
+        // Once a non-initial event is processed, ensure the flag is false.
+        if (isInitialLoad.current) isInitialLoad.current = false;
+
+        // console.log(`AuthContext: Auth state changed event: ${event}. Session present: ${!!currentSession}`); // Reduce noise?
+
+        const isSignificantChange = event === 'SIGNED_IN' || event === 'SIGNED_OUT';
+        if (isSignificantChange) setLoadingAuth(true);
+
+        await updateUserState(currentSession, `authStateChange (${event})`);
+
+        if (isSignificantChange) setLoadingAuth(false);
+
         if (event === 'SIGNED_IN') {
           toast({
             title: "Signed in successfully",
@@ -153,7 +204,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         } else if (event === 'SIGNED_OUT') {
           toast({
             title: "Signed out",
-            description: "You have been signed out successfully",
+            description: "You have been signed out successfully.",
           });
         }
       }
@@ -162,91 +213,65 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      // console.log("AuthContext: Provider unmounted, unsubscribed."); // Reduce noise?
     };
+  }, [updateUserState, toast]); // Dependency array is correct
+
+  // --- Authentication Actions ---
+  const signIn = useCallback(async (email: string, password: string) => {
+     try {
+       // console.log('AuthContext: Attempting sign in for:', email); // Reduce noise?
+       const { error } = await supabase.auth.signInWithPassword({ email, password });
+       if (error) throw error;
+     } catch (error: any) {
+       console.error('AuthContext: Sign in error:', error);
+       toast({ title: 'Sign in failed', description: error.message || 'An error occurred.', variant: 'destructive' });
+       throw error;
+     }
+   }, [toast]);
+
+  const signUp = useCallback(async (email: string, password: string, fullName: string, companyName: string) => {
+    try {
+      // console.log('AuthContext: Attempting sign up:', { email, fullName, companyName }); // Reduce noise?
+      const signupOptions = { data: { full_name: fullName, company_name: companyName } };
+      // console.log('AuthContext: Supabase signup payload:', { email, options: signupOptions }); // Reduce noise?
+      const { error } = await supabase.auth.signUp({ email, password, options: signupOptions });
+      if (error) throw error;
+      toast({ title: 'Account created', description: 'Please check your email to verify.' });
+    } catch (error: any) {
+      console.error('AuthContext: Sign up error:', error);
+      toast({ title: 'Sign up failed', description: error.message || 'An error occurred.', variant: 'destructive' });
+      throw error;
+    }
   }, [toast]);
 
-  const signIn = async (email: string, password: string) => {
+  const signOut = useCallback(async () => {
     try {
-      console.log('Attempting sign in for:', email);
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-      
-      if (error) throw error;
-    } catch (error: any) {
-      console.error('Sign in error:', error);
-      toast({
-        title: "Sign in failed",
-        description: error.message || "An error occurred during sign in",
-        variant: "destructive",
-      });
-      throw error;
-    }
-  };
-
-  const signUp = async (email: string, password: string, fullName: string) => {
-    try {
-      console.log('Attempting sign up for:', email);
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
-      });
-      
-      if (error) throw error;
-      
-      toast({
-        title: "Account created",
-        description: "Your account has been created successfully. Please verify your email.",
-      });
-    } catch (error: any) {
-      console.error('Sign up error:', error);
-      toast({
-        title: "Sign up failed",
-        description: error.message || "An error occurred during sign up",
-        variant: "destructive",
-      });
-      throw error;
-    }
-  };
-
-  const signOut = async () => {
-    try {
-      console.log('Attempting sign out');
+      // console.log('AuthContext: Attempting sign out...'); // Reduce noise?
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     } catch (error: any) {
-      console.error('Sign out error:', error);
-      toast({
-        title: "Sign out failed",
-        description: error.message || "An error occurred during sign out",
-        variant: "destructive",
-      });
+      console.error('AuthContext: Sign out error:', error);
+      toast({ title: 'Sign out failed', description: error.message || 'An error occurred.', variant: 'destructive' });
       throw error;
     }
-  };
+  }, [toast]);
 
-  const value = {
+
+  // --- Context Value ---
+  // Ensure the value object has a stable identity or use useMemo
+  const value = React.useMemo(() => ({
     user,
     session,
-    loading,
+    loadingAuth,
+    loadingCompany,
     signIn,
     signUp,
     signOut,
-  };
+  }), [user, session, loadingAuth, loadingCompany, signIn, signUp, signOut]);
+
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (context === undefined) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
+// Note: useAuth hook is already defined and exported above the provider.

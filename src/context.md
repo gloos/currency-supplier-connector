@@ -1,8 +1,24 @@
 Context & Rules for Cursor AI Assistant: Purchase Order Tool
 
-Stack
-React Router
-Vite
+the current stack of the project is:
+
+Frontend Framework: React
+
+Build Tool / Dev Server: Vite
+
+Routing: React Router (react-router-dom)
+
+Language: TypeScript
+
+Styling: Tailwind CSS
+
+UI Components: Shadcn UI (which utilizes Radix UI primitives)
+
+Database / Backend: Supabase (used as a Backend-as-a-Service, interacted with directly via @supabase/supabase-js)
+
+Data Fetching / State Management: TanStack Query (React Query)
+
+Primary External Integration: FreeAgent (API interaction attempted directly from frontend code)
 
 1. Project Overview
 

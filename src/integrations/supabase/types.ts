@@ -11,46 +11,46 @@ export type Database = {
     Tables: {
       companies: {
         Row: {
+          created_at: string
           id: string
           name: string
           slug: string
-          created_at: string | null
-          updated_at: string | null
+          updated_at: string
         }
         Insert: {
+          created_at?: string
           id?: string
           name: string
           slug: string
-          created_at?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Update: {
+          created_at?: string
           id?: string
           name?: string
           slug?: string
-          created_at?: string | null
-          updated_at?: string | null
+          updated_at?: string
         }
         Relationships: []
       }
       company_users: {
         Row: {
           company_id: string
-          user_id: string
-          role: string
           created_at: string
+          role: string
+          user_id: string
         }
         Insert: {
           company_id: string
-          user_id: string
-          role?: string
           created_at?: string
+          role?: string
+          user_id: string
         }
         Update: {
           company_id?: string
-          user_id?: string
-          role?: string
           created_at?: string
+          role?: string
+          user_id?: string
         }
         Relationships: [
           {
@@ -59,7 +59,7 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "companies"
             referencedColumns: ["id"]
-          }
+          },
         ]
       }
       freeagent_credentials: {
@@ -94,6 +94,54 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      po_lines: {
+        Row: {
+          company_id: string
+          created_at: string
+          description: string
+          id: string
+          purchase_order_id: string
+          quantity: number
+          unit_price: number
+          updated_at: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string
+          description: string
+          id?: string
+          purchase_order_id: string
+          quantity: number
+          unit_price: number
+          updated_at?: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string
+          description?: string
+          id?: string
+          purchase_order_id?: string
+          quantity?: number
+          unit_price?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "po_lines_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "po_lines_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       preferences: {
         Row: {
@@ -152,9 +200,11 @@ export type Database = {
       purchase_orders: {
         Row: {
           amount: number
+          company_id: string
           created_at: string | null
           currency: string
           description: string | null
+          freeagent_bill_id: string | null
           id: string
           po_number: string
           status: string | null
@@ -165,9 +215,11 @@ export type Database = {
         }
         Insert: {
           amount: number
+          company_id: string
           created_at?: string | null
           currency?: string
           description?: string | null
+          freeagent_bill_id?: string | null
           id?: string
           po_number: string
           status?: string | null
@@ -178,9 +230,11 @@ export type Database = {
         }
         Update: {
           amount?: number
+          company_id?: string
           created_at?: string | null
           currency?: string
           description?: string | null
+          freeagent_bill_id?: string | null
           id?: string
           po_number?: string
           status?: string | null
@@ -189,14 +243,37 @@ export type Database = {
           updated_at?: string | null
           user_id?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_company: {
+        Args: {
+          p_user_id: string
+        }
+        Returns: {
+          id: string
+          name: string
+          slug: string
+        }[]
+      }
+      slugify: {
+        Args: {
+          "": string
+        }
+        Returns: string
+      }
     }
     Enums: {
       [_ in never]: never

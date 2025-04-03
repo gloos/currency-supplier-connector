@@ -54,29 +54,58 @@ const AuthPage = () => {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signupEmail || !signupPassword || !signupName || !companyName) {
+    // Trim inputs
+    const trimmedEmail = signupEmail.trim();
+    const trimmedName = signupName.trim();
+    const trimmedCompanyName = companyName.trim();
+
+    if (!trimmedEmail || !signupPassword || !trimmedName || !trimmedCompanyName) {
       toast({
         title: "Missing fields",
-        description: "Please fill in all fields",
+        description: "Please fill in all required fields (Full Name, Email, Password, Company Name).",
         variant: "destructive",
       });
       return;
     }
+     if (signupPassword.length < 6) {
+         toast({
+             title: "Weak Password",
+             description: "Password must be at least 6 characters long.",
+             variant: "destructive",
+         });
+         return;
+     }
+
+    // **** ADDED DEBUG LOG from previous step (already here, just confirming) ****
+    console.log('DEBUG: Calling context signUp with:', {
+        email: trimmedEmail,
+        fullName: trimmedName,
+        companyName: trimmedCompanyName
+    });
+    // ***************************************************************************
 
     try {
       setIsSigningUp(true);
-      await signUp(signupEmail, signupPassword, signupName);
-      toast({
-        title: "Success",
-        description: "Please check your email to verify your account",
-      });
+      // Call the modified signUp from context, passing companyName
+      await signUp(trimmedEmail, signupPassword, trimmedName, trimmedCompanyName);
+
+      // Success toast is handled within the context signUp function now
+      // toast({ ... }); // No need for success toast here anymore
+
+      // Optional: Navigate to login or show a specific message
+      // setActiveTab('login'); // Switch to login tab?
+      // Or clear form:
+      // setSignupEmail(''); setSignupPassword(''); setSignupName(''); setCompanyName('');
+
     } catch (error) {
-      console.error('Signup error:', error);
+      // Error toast is handled within the context signUp function
+      console.error('Signup error (in AuthPage component):', error);
+      // No need for error toast here anymore unless you want component-specific handling
     } finally {
       setIsSigningUp(false);
     }
   };
-
+  
   return (
     <div className="flex min-h-screen items-center justify-center">
       <BlurCard className="w-full max-w-md">
