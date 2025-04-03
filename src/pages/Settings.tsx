@@ -1,434 +1,300 @@
-import React, { useState, useEffect } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import Navbar from "@/components/layout/navbar";
-import BlurCard from "@/components/ui/blur-card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
-import { freeAgentApi } from "@/utils/freeagent-api"; // Keep for disconnect, loadCredentials, getAuthUrl
-import { useToast } from "@/hooks/use-toast";
-import ProtectedRoute from "@/components/auth/ProtectedRoute";
-import { Loader2, ExternalLink, CheckCircle, AlertTriangle, Globe } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client"; // Use the client instance
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/integrations/supabase/client';
+import { freeAgentApi } from '@/utils/freeagent-api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { toast } from 'sonner'; // Use sonner toast
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Loader2, AlertCircle } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
-// Interface for preferences table (assuming it exists in types/freeagent.ts or similar)
-interface PreferencesTable {
-  id: number;
-  auto_create_bills: boolean | null; // Allow null based on DB schema
-  default_currency: string | null; // Allow null based on DB schema
-  created_at: string | null;
-  updated_at: string | null;
+// Interface for the credential status check from Supabase
+interface CredentialStatus {
+    id: number; // The PK of the credential row
+    company_id: string;
+    updated_at: string | null; // Use updated_at as proxy for last sync
 }
 
-const Settings = () => {
-  const { toast } = useToast();
-  const location = useLocation();
-  const navigate = useNavigate();
+const Settings: React.FC = () => {
+    const { user } = useAuth();
+    const companyId = user?.company?.id;
+    const queryClient = useQueryClient();
+    const [oauthError, setOauthError] = useState<string | null>(null); // For OAuth redirect specific errors
 
-  const [freeAgentClientId, setFreeAgentClientId] = useState("");
-  // REMOVED: const [freeAgentClientSecret, setFreeAgentClientSecret] = useState("");
-  const [autoCreateBills, setAutoCreateBills] = useState(true);
-  const [defaultCurrency, setDefaultCurrency] = useState("USD");
-  const [isConnected, setIsConnected] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false); // General submitting state
-  const [isLoading, setIsLoading] = useState(true); // Initial page load state
-  const [isConnecting, setIsConnecting] = useState(false); // Specific state for OAuth connection process
-  const [oauthError, setOauthError] = useState<string | null>(null);
-  const [redirectUri, setRedirectUri] = useState("");
+    // --- Data Fetching and Mutations --- 
 
-  // Set the redirect URI for display
-  useEffect(() => {
-    const uri = `${window.location.origin}/settings`;
-    console.log("Current redirect URI for display:", uri);
-    setRedirectUri(uri);
-  }, []);
+    // Query to check FreeAgent connection status
+    const { data: credential, isLoading: isLoadingStatus, error: statusError } = useQuery<CredentialStatus | null>({
+        queryKey: ['freeagentConnectionStatus', companyId],
+        queryFn: async (): Promise<CredentialStatus | null> => {
+            if (!companyId) return null; // Guard clause
+            const { data, error } = await supabase
+                .from('freeagent_credentials')
+                .select('id, company_id, updated_at')
+                .eq('company_id', companyId)
+                .maybeSingle();
 
-  // Check for OAuth code/error and load initial state
-  useEffect(() => {
-    const processOAuthCallback = async () => {
-      const query = new URLSearchParams(location.search);
-      const code = query.get('code');
-      const error = query.get('error');
-      const errorDescription = query.get('error_description');
-
-      if (error) {
-        setOauthError(errorDescription || 'An error occurred during FreeAgent authorization.');
-        console.error("OAuth error received:", error, errorDescription);
-        toast({ title: "Authorization Failed", description: errorDescription || "Failed to connect to FreeAgent.", variant: "destructive" });
-        navigate("/settings", { replace: true }); // Clear URL params
-        setIsLoading(false);
-        return;
-      }
-
-      if (code) {
-        setIsLoading(true); // Show loading while processing code
-        setIsConnecting(true); // Indicate connection process is active
-        setOauthError(null);
-        console.log("Found auth code, invoking Edge Function...");
-
-        try {
-          // Call the Edge Function to exchange the code
-          const { data: functionData, error: functionError } = await supabase.functions.invoke(
-            'freeagent-oauth-callback', // Edge Function name
-            { body: { code } }          // Pass the code securely in the body
-          );
-
-          if (functionError) {
-            console.error('Edge Function invocation error:', functionError);
-            // Attempt to parse Supabase Edge Function error details if available
-            let detail = functionError.message || 'Failed to invoke backend function.';
-            if (functionError.context && typeof functionError.context === 'object' && 'error' in functionError.context) {
-                detail = (functionError.context as any).error || detail;
+            if (error) {
+                console.error("Error fetching connection status:", error);
+                 if (error.message.includes('column') && error.message.includes('does not exist')) {
+                     console.warn("DB schema might be outdated. Ensure 'company_id' exists on 'freeagent_credentials'.");
+                     throw new Error("Database schema error. Cannot check connection.");
+                 }
+                throw new Error(`Failed to check FreeAgent connection status: ${error.message}`);
             }
-            throw new Error(detail);
-          }
+            return data as CredentialStatus | null; // Cast data to expected type or null
+        },
+        enabled: !!companyId, // Only run if companyId is available
+        staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+        refetchOnWindowFocus: false, // Prevent refetch on tab focus
+    });
 
-          // Check the response *from the function itself*
-          if (functionData?.error) {
-             console.error('Edge Function execution error:', functionData.error);
-             throw new Error(functionData.error);
-          }
+    // Derive connection state from query result
+    const isConnected = !!credential;
+    const credentialId = credential?.id;
+    const lastSyncTime = credential?.updated_at ? new Date(credential.updated_at).toLocaleString() : 'Never';
 
-          if (functionData?.success) {
-             console.log("Edge Function call successful:", functionData.message);
-             setIsConnected(true);
-             toast({ title: "Connected", description: "Successfully connected to FreeAgent." });
-             // Reload credentials to display Client ID (secret is not needed/stored client-side)
-             const creds = await freeAgentApi.loadCredentials(); // Load from DB via API helper
-             if (creds) setFreeAgentClientId(creds.clientId);
-          } else {
-              // This case should ideally be caught by functionData.error check above
-              throw new Error(functionData?.message || 'Unknown error during token exchange process.');
-          }
+    // Mutation to trigger the sync Edge Function
+    const triggerSync = useMutation({
+        mutationFn: async () => {
+            const { data, error } = await supabase.functions.invoke('sync-freeagent-data');
+            if (error) {
+                 let message = error.message || 'Failed to start data sync.';
+                 if (error.context?.error_details) message = error.context.error_details;
+                 throw new Error(message);
+            }
+             if (data?.error) throw new Error(data.error);
+            return data;
+        },
+        onSuccess: (data) => {
+            toast("Sync Successful", {
+                description: `Synced: ${data?.syncedContacts ?? 0} contacts, ${data?.syncedProjects ?? 0} projects, ${data?.syncedCategories ?? 0} categories.`,
+            });
+            // Invalidate queries to refresh data
+            queryClient.invalidateQueries({ queryKey: ['freeagentConnectionStatus', companyId] });
+            queryClient.invalidateQueries({ queryKey: ['cachedContacts', companyId] });
+            queryClient.invalidateQueries({ queryKey: ['cachedProjects', companyId] });
+            queryClient.invalidateQueries({ queryKey: ['cachedCategories', companyId] });
+        },
+        onError: (error) => {
+             toast("Sync Failed", {
+                 description: error instanceof Error ? error.message : "Unknown sync error.",
+             });
+        },
+    });
 
-        } catch (invokeError) {
-          console.error("Error during Edge Function call or processing:", invokeError);
-          const message = invokeError instanceof Error ? invokeError.message : "Failed to connect to FreeAgent after authorization.";
-          setOauthError(message);
-          toast({ title: "Connection Failed", description: message, variant: "destructive" });
-        } finally {
-          navigate("/settings", { replace: true }); // Clean up URL params
-          setIsConnecting(false); // End connection specific loading state
-          setIsLoading(false); // End general loading state
+    // Mutation for disconnecting
+    const disconnectMutation = useMutation({
+         mutationFn: async () => {
+             if (!credentialId) throw new Error("Cannot disconnect, connection details not found.");
+             await freeAgentApi.disconnect(credentialId); // Call utility function
+         },
+         onSuccess: () => {
+             toast("Disconnected", { description: "Successfully disconnected from FreeAgent." });
+             // Invalidate status and remove cached data
+             queryClient.invalidateQueries({ queryKey: ['freeagentConnectionStatus', companyId] });
+             queryClient.removeQueries({ queryKey: ['cachedContacts', companyId] });
+             queryClient.removeQueries({ queryKey: ['cachedProjects', companyId] });
+             queryClient.removeQueries({ queryKey: ['cachedCategories', companyId] });
+         },
+         onError: (error) => {
+             toast("Disconnect Failed", {
+                 description: error instanceof Error ? error.message : "Unknown disconnect error.",
+             });
+         },
+     });
+
+    // --- Effects --- 
+
+    // Effect to handle the OAuth callback
+    useEffect(() => {
+        let isMounted = true; // Flag to track component mount status
+
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        const errorParam = params.get('error');
+        const errorDesc = params.get('error_description');
+
+        if (code || errorParam) {
+            // Clean URL immediately only if mounted to avoid potential issues
+            if (isMounted) {
+                 window.history.replaceState({}, document.title, window.location.pathname); 
+            }
         }
-      } else {
-         // No code or error in URL, just load the current connection status and preferences
-         const loadInitialData = async () => {
-             setIsLoading(true);
-             try {
-                 // Load FreeAgent connection status
-                 const credentials = await freeAgentApi.loadCredentials();
-                 if (credentials?.accessToken) {
-                     setIsConnected(true);
-                     setFreeAgentClientId(credentials.clientId);
-                 } else {
-                     setIsConnected(false);
-                 }
 
-                 // Load Preferences
-                 const { data: prefsData, error: prefsError } = await supabase
-                    .from('preferences')
-                    .select('*')
-                    .eq('id', 1) // Assuming single row with ID 1
-                    .maybeSingle();
+        if (errorParam) {
+            const errorMsg = `Connection failed: ${errorDesc || errorParam}`;
+            console.error(`OAuth Error: ${errorParam} - ${errorDesc}`);
+            if (isMounted) {
+                 setOauthError(errorMsg);
+            }
+            return; // Exit early
+        }
 
-                 if (prefsError) {
-                    console.error("Error loading preferences:", prefsError);
-                    // Non-critical, maybe toast a warning
-                 } else if (prefsData) {
-                    const prefs = prefsData as PreferencesTable;
-                    setAutoCreateBills(prefs.auto_create_bills ?? true);
-                    setDefaultCurrency(prefs.default_currency ?? "USD");
-                 }
-             } catch(err) {
-                 console.error("Error loading initial settings data:", err);
-                 toast({ title: "Error", description: "Could not load initial settings.", variant: "destructive" });
-             } finally {
-                 setIsLoading(false);
+        if (code) {
+             if (isMounted) {
+                 setOauthError(null);
              }
-         };
-         loadInitialData();
-      }
+            console.log("OAuth code detected, invoking callback function...");
+            
+            supabase.functions.invoke('freeagent-oauth-callback', { body: { code } })
+                .then(({ data, error }) => {
+                    if (!isMounted) return; // Don't proceed if unmounted
+
+                    if (error) {
+                        let message = error.message || 'Failed processing connection.';
+                         if (error.context?.error_details) message = error.context.error_details;
+                        throw new Error(message);
+                    }
+                    if (data?.error) throw new Error(data.error);
+
+                    console.log("Callback function success:", data);
+                    toast("Connected", { description: "Successfully connected! You can now sync data." });
+                    queryClient.invalidateQueries({ queryKey: ['freeagentConnectionStatus', companyId] });
+                })
+                .catch((err) => {
+                    if (!isMounted) return; // Don't proceed if unmounted
+
+                    const errorMsg = err instanceof Error ? err.message : "Unknown callback error.";
+                    console.error("Error during connection callback processing:", err);
+                    setOauthError(`Connection Error: ${errorMsg}`);
+                    toast("Connection Failed", { description: errorMsg });
+                });
+        }
+
+        // Cleanup function to set isMounted to false when component unmounts
+        return () => {
+            isMounted = false;
+        };
+        // Disable ESLint exhaustive-deps rule if triggerSync causes infinite loops, 
+        // but ensure companyId and queryClient are stable or correctly handled.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [queryClient, companyId]); // Re-run only if queryClient or companyId changes
+
+    // --- Event Handlers --- 
+
+    const handleConnect = () => {
+        try {
+            setOauthError(null);
+            const authUrl = freeAgentApi.getAuthUrl();
+            window.location.href = authUrl;
+        } catch (error) {
+             const errorMsg = error instanceof Error ? error.message : "Configuration error.";
+             console.error("Error initiating connection:", error);
+             toast("Connection Error", { description: errorMsg });
+             setOauthError(errorMsg);
+        }
     };
 
-    processOAuthCallback();
-  // Rerun when location changes (e.g., after OAuth redirect)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location, navigate, toast]); // Dependencies for effect
+    const handleDisconnect = () => disconnectMutation.mutate();
+    const handleSyncNow = () => triggerSync.mutate();
 
-  // --- Initiate FreeAgent Connection ---
-  const handleConnectFreeAgent = (e: React.FormEvent) => {
-    e.preventDefault();
-    setOauthError(null); // Clear previous errors
-    const trimmedClientId = freeAgentClientId.trim();
+    // Combine loading states
+    const isLoading = isLoadingStatus || triggerSync.isPending || disconnectMutation.isPending;
 
-    if (!trimmedClientId) {
-      toast({
-        title: "Missing Information",
-        description: "Please enter your FreeAgent OAuth Identifier (Client ID).",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    try {
-      // Generate authorization URL using ONLY the Client ID
-      const authUrl = freeAgentApi.getAuthUrl(trimmedClientId);
-      console.log("Redirecting user to FreeAgent auth URL:", authUrl);
-      // Redirect the user's browser to FreeAgent for authorization
-      window.location.href = authUrl;
-      // Show connecting state while redirecting
-      setIsConnecting(true);
-    } catch (error) {
-        console.error("Error generating FreeAgent auth URL:", error);
-        toast({ title: "Error", description: "Failed to initiate connection process.", variant: "destructive"});
-        setIsConnecting(false); // Stop connecting state on error
-    }
-  };
-
-  // --- Disconnect from FreeAgent ---
-  const handleDisconnect = async () => {
-    setIsSubmitting(true);
-    try {
-      await freeAgentApi.disconnect(); // This now deletes credentials from DB via the API helper
-      setIsConnected(false);
-      setFreeAgentClientId("");
-      // REMOVED: setFreeAgentClientSecret("");
-      setOauthError(null);
-      toast({ title: "Disconnected", description: "Successfully disconnected from FreeAgent." });
-    } catch (error) {
-      console.error("Error disconnecting:", error);
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to disconnect from FreeAgent.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // --- Save User Preferences ---
-  const handleSavePreferences = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      // Upsert preferences into the database
-      const { error } = await supabase
-        .from('preferences')
-        .upsert({
-          id: 1, // Use a fixed ID for the single preferences row
-          auto_create_bills: autoCreateBills,
-          default_currency: defaultCurrency,
-          updated_at: new Date().toISOString(), // Explicitly set update timestamp
-        }, { onConflict: 'id' }); // Specify the conflict column
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Preferences Saved",
-        description: "Your settings have been updated successfully."
-      });
-    } catch (error) {
-      console.error("Error saving preferences:", error);
-      toast({
-        title: "Error Saving Preferences",
-        description: error instanceof Error ? error.message : "Failed to save your preferences.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  // --- Render Loading State ---
-  if (isLoading) {
+    // --- Render --- 
     return (
-      <div className="min-h-screen bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
-        <Navbar />
-        <main className="page-container flex justify-center items-center pt-20">
-          <Loader2 className="h-12 w-12 animate-spin text-primary" />
-        </main>
-      </div>
-    );
-  }
-
-  // --- Render Main Settings Page ---
-  return (
-    <ProtectedRoute>
-      <div className="min-h-screen bg-gradient-to-br from-white to-blue-50 dark:from-gray-900 dark:to-gray-800">
-        <Navbar />
-
-        <main className="page-container">
-          <div className="page-header">
-            <h1 className="page-title">Settings</h1>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            {/* FreeAgent Connection Card */}
-            <BlurCard className="animate-slide-up">
-              <CardHeader>
-                <CardTitle>FreeAgent Integration</CardTitle>
-                <CardDescription>
-                  Connect your FreeAgent account to sync data.
-                </CardDescription>
-              </CardHeader>
-
-              <CardContent>
-                <form onSubmit={handleConnectFreeAgent} className="space-y-4">
-                  <div>
-                    <Label htmlFor="clientId">OAuth Identifier (Client ID)</Label>
-                    <Input
-                      id="clientId"
-                      value={freeAgentClientId}
-                      onChange={(e) => setFreeAgentClientId(e.target.value)}
-                      disabled={isConnected || isConnecting || isSubmitting}
-                      placeholder="Enter your FreeAgent Client ID"
-                      required
-                    />
-                  </div>
-
-                  {/* Client Secret Input REMOVED */}
-
-                  <div className="rounded-lg bg-secondary/50 p-4 text-sm">
-                    <div className="flex items-start mb-2">
-                      <Globe className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium">Your Redirect URI</p>
-                        <p className="mt-1 break-all font-mono text-xs bg-background/50 px-2 py-1 rounded">{redirectUri}</p>
-                      </div>
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-2">
-                      Ensure this exact URI is registered in your FreeAgent application settings.
-                    </p>
-                  </div>
-
-                  {oauthError && (
-                    <div className="rounded-lg bg-destructive/10 text-destructive p-4 text-sm flex items-start border border-destructive/30">
-                      <AlertTriangle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-                      <div>
-                        <p className="font-medium">Connection Error</p>
-                        <p className="mt-1">{oauthError}</p>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="pt-2 text-sm text-muted-foreground">
-                    <a
-                      href="https://dev.freeagent.com/docs/oauth" // Link to relevant docs
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center hover:text-primary transition-colors"
-                    >
-                      <ExternalLink size={14} className="mr-1" />
-                      Find your FreeAgent OAuth credentials
-                    </a>
-                  </div>
-
-                  <div className="pt-4">
-                    {isConnected ? (
-                      <div className="flex flex-col space-y-4">
-                        <div className="rounded-lg bg-green-100 dark:bg-green-900/30 text-green-800 dark:text-green-300 p-4 text-sm flex items-start border border-green-200 dark:border-green-700">
-                          <CheckCircle className="h-5 w-5 mr-2 mt-0.5 flex-shrink-0" />
-                          <div>
-                            <p className="font-medium">Connected to FreeAgent</p>
-                            <p className="mt-1">Your account is linked.</p>
-                          </div>
+        <div className="container mx-auto p-4">
+            <Card className="max-w-2xl mx-auto">
+                <CardHeader>
+                    <CardTitle>FreeAgent Integration</CardTitle>
+                    <CardDescription>
+                        Connect your FreeAgent account to sync contacts, projects, and categories.
+                    </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    {/* Initial Loading State */}
+                    {isLoadingStatus && (
+                        <div className="flex items-center justify-center p-4">
+                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                             <span className="ml-2 text-muted-foreground">Loading connection status...</span>
                         </div>
-                        <Button
-                          type="button"
-                          variant="destructive"
-                          onClick={handleDisconnect}
-                          disabled={isSubmitting || isConnecting}
-                          className="w-full"
-                        >
-                          {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                          Disconnect FreeAgent
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button
-                        type="submit"
-                        disabled={isSubmitting || isConnecting}
-                        className="w-full"
-                      >
-                        {isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                        {isConnecting ? "Connecting..." : "Connect to FreeAgent"}
-                      </Button>
                     )}
-                  </div>
-                </form>
-              </CardContent>
-            </BlurCard>
 
-            {/* Preferences Card */}
-            <BlurCard className="animate-slide-up" style={{ animationDelay: "100ms" }}>
-              <CardHeader>
-                <CardTitle>Preferences</CardTitle>
-                <CardDescription>
-                  Configure default settings for the application.
-                </CardDescription>
-              </CardHeader>
+                    {/* Status Loading Error */}
+                    {statusError && !isLoadingStatus && (
+                         <Alert variant="destructive">
+                           <AlertCircle className="h-4 w-4" />
+                           <AlertTitle>Error Loading Status</AlertTitle>
+                           <AlertDescription>
+                               {statusError instanceof Error ? statusError.message : "Could not load connection details."}
+                           </AlertDescription>
+                         </Alert>
+                    )}
 
-              <CardContent>
-                <form onSubmit={handleSavePreferences} className="space-y-6">
-                  <div className="flex items-center justify-between rounded-lg border p-4">
-                    <div className="space-y-0.5 pr-4">
-                      <Label htmlFor="autoBill" className="text-base">Auto-create bills</Label>
-                      <p className="text-sm text-muted-foreground">
-                        Automatically create bills in FreeAgent when sending POs. (Requires FreeAgent connection)
-                      </p>
-                    </div>
-                    <Switch
-                      id="autoBill"
-                      checked={autoCreateBills}
-                      onCheckedChange={setAutoCreateBills}
-                      disabled={!isConnected || isSubmitting} // Disable if not connected
-                      aria-label="Toggle automatic bill creation in FreeAgent"
-                    />
-                  </div>
+                    {/* OAuth Redirect Error */}
+                    {oauthError && !isLoading && (
+                         <Alert variant="destructive">
+                           <AlertCircle className="h-4 w-4" />
+                           <AlertTitle>Connection Error</AlertTitle>
+                           <AlertDescription>{oauthError}</AlertDescription>
+                         </Alert>
+                    )}
 
-                  <div>
-                    <Label htmlFor="defaultCurrency">Default Currency</Label>
-                    <Input
-                      id="defaultCurrency"
-                      value={defaultCurrency}
-                      onChange={(e) => setDefaultCurrency(e.target.value.toUpperCase())} // Force uppercase
-                      placeholder="e.g., GBP, USD, EUR"
-                      maxLength={3}
-                      disabled={isSubmitting}
-                      className="w-32" // Make currency input smaller
-                    />
-                     <p className="text-xs text-muted-foreground mt-1">Enter the 3-letter currency code (e.g., GBP).</p>
-                  </div>
+                    {/* Main Content Area (when status loaded successfully) */}
+                    {!isLoadingStatus && !statusError && (
+                        <div>
+                            <div className="flex justify-between items-center mb-4">
+                                <p className="text-sm font-medium">
+                                    Status: {isLoadingStatus ? <Loader2 className="inline-block h-4 w-4 animate-spin ml-1" /> : (isConnected ? <span className="text-green-600 font-semibold ml-1">Connected</span> : <span className="text-red-600 font-semibold ml-1">Not Connected</span>)}
+                                </p>
+                                {isConnected && (
+                                    <p className="text-sm text-muted-foreground">Last Sync: {lastSyncTime}</p>
+                                )}
+                            </div>
 
-                  <Button
-                    type="submit"
-                    className="mt-6 w-full"
-                    disabled={isSubmitting || isConnecting}
-                  >
-                    {isSubmitting && !isConnecting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Save Preferences
-                  </Button>
-                </form>
-              </CardContent>
-            </BlurCard>
-          </div>
-        </main>
-      </div>
-    </ProtectedRoute>
-  );
+                            {!isConnected && !companyId && (
+                                <Alert variant="default" className="mb-4">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>Company Not Loaded</AlertTitle>
+                                    <AlertDescription>Cannot manage integration until company details are available.</AlertDescription>
+                                </Alert>
+                            )}
+
+                            {/* Action Buttons */  }
+                            <div className="flex space-x-2 pt-2">
+                                {isConnected ? (
+                                    <>
+                                        <Button
+                                            onClick={handleSyncNow}
+                                            disabled={isLoading}
+                                            aria-label="Sync FreeAgent data now"
+                                            size="sm"
+                                        >
+                                            {triggerSync.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            Sync Now
+                                        </Button>
+                                        <Button
+                                            variant="destructive"
+                                            onClick={handleDisconnect}
+                                            disabled={isLoading}
+                                            aria-label="Disconnect from FreeAgent"
+                                            size="sm"
+                                        >
+                                            {disconnectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                            Disconnect
+                                        </Button>
+                                    </>
+                                ) : (
+                                    <Button
+                                        onClick={handleConnect}
+                                        disabled={isLoading || !companyId} // Disable if loading or no company ID
+                                        aria-label="Connect to FreeAgent"
+                                        size="sm"
+                                    >
+                                        Connect to FreeAgent
+                                    </Button>
+                                )}
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Preferences Card can remain here if separate */}
+        </div>
+    );
 };
 
 export default Settings;

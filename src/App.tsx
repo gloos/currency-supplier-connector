@@ -14,7 +14,7 @@ import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
 // Component Imports (used in nested routes)
 import POList from './components/purchase-order/po-list';
-import POForm from './components/purchase-order/po-form';
+import { POForm } from './components/purchase-order/po-form';
 import PODetail from './components/purchase-order/po-detail';
 // Optional: Layout Component
 // import MainLayout from './components/layout/MainLayout'; // Example if you create one

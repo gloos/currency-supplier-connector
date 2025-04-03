@@ -17,6 +17,7 @@ interface Company {
   id: string;
   name: string;
   slug: string;
+  fa_default_currency?: string | null;
 }
 
 interface UserWithCompany extends User {
@@ -71,10 +72,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     async (userId: string): Promise<Company | null> => {
       if (!userId) return null;
       try {
-        // console.log('AuthContext: Fetching company data for user:', userId); // Reduce noise?
         const { data, error } = await supabase
           .from('company_users')
-          .select(`company:companies(id, name, slug)`)
+          .select(`company:companies(id, name, slug, fa_default_currency)`)
           .eq('user_id', userId)
           .maybeSingle();
 
@@ -83,10 +83,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           return null;
         }
         if (!data?.company) {
-          // console.warn('AuthContext: No company association found for user:', userId); // Reduce noise?
           return null;
         }
-        // console.log('AuthContext: Company data received:', data.company); // Reduce noise?
         return data.company as Company;
       } catch (error) {
         console.error('AuthContext: Exception fetching user company:', error);
@@ -99,7 +97,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // --- Update User and Company State ---
   const updateUserState = useCallback(
     async (currentSession: Session | null, source: string) => {
-      // console.log(`AuthContext: Updating user state (from ${source}). Session present:`, !!currentSession); // Reduce noise?
       const shouldFetchCompany = !!currentSession?.user;
       setLoadingCompany(shouldFetchCompany);
 
@@ -113,9 +110,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             ...currentSession!.user!,
             company: fetchedCompany || undefined,
           };
-          // console.log(`AuthContext: (${source}) User state derived. Company found:`, !!fetchedCompany); // Reduce noise?
         } else {
-          // console.log(`AuthContext: (${source}) User state cleared (no session).`); // Reduce noise?
         }
         setUser(userWithCompany);
         setSession(currentSession);
@@ -127,7 +122,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       } finally {
         if (shouldFetchCompany) {
           setLoadingCompany(false);
-          // console.log(`AuthContext: (${source}) Company loading finished.`); // Reduce noise?
         }
       }
     },
@@ -137,14 +131,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   // --- Effect for Initial Load & Auth State Changes ---
   useEffect(() => {
     let mounted = true;
-    // console.log('AuthContext: useEffect mounting. Setting loading states true.'); // Reduce noise?
     setLoadingAuth(true);
     setLoadingCompany(true);
     isInitialLoad.current = true;
 
     const setupAuth = async () => {
       try {
-        // console.log('AuthContext: Initializing auth - calling getSession...'); // Reduce noise?
         const { data: { session: currentSession }, error } = await supabase.auth.getSession();
 
         if (!mounted) return;
@@ -152,7 +144,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (error) {
           console.error('AuthContext: Error during initial getSession:', error);
         } else {
-            // console.log('AuthContext: Initial getSession completed. Session present:', !!currentSession); // Reduce noise?
         }
         await updateUserState(currentSession, 'initialLoad');
 
@@ -167,7 +158,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (mounted) {
           setLoadingAuth(false);
           isInitialLoad.current = false;
-          // console.log('AuthContext: Initial auth loading finished.'); // Reduce noise?
         }
       }
     };
@@ -179,15 +169,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (!mounted) return;
 
         if (isInitialLoad.current && (event === 'INITIAL_SESSION' || event === 'SIGNED_IN')) {
-             // console.log(`AuthContext: Ignoring event '${event}' because initial load is still flagged.`); // Reduce noise?
-             // If initial load *just* finished, ensure loading states are false
              if (!loadingAuth) isInitialLoad.current = false;
              return;
         }
-        // Once a non-initial event is processed, ensure the flag is false.
         if (isInitialLoad.current) isInitialLoad.current = false;
-
-        // console.log(`AuthContext: Auth state changed event: ${event}. Session present: ${!!currentSession}`); // Reduce noise?
 
         const isSignificantChange = event === 'SIGNED_IN' || event === 'SIGNED_OUT';
         if (isSignificantChange) setLoadingAuth(true);
@@ -213,14 +198,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return () => {
       mounted = false;
       subscription.unsubscribe();
-      // console.log("AuthContext: Provider unmounted, unsubscribed."); // Reduce noise?
     };
-  }, [updateUserState, toast]); // Dependency array is correct
+  }, [updateUserState, toast]);
 
   // --- Authentication Actions ---
   const signIn = useCallback(async (email: string, password: string) => {
      try {
-       // console.log('AuthContext: Attempting sign in for:', email); // Reduce noise?
        const { error } = await supabase.auth.signInWithPassword({ email, password });
        if (error) throw error;
      } catch (error: any) {
@@ -232,9 +215,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signUp = useCallback(async (email: string, password: string, fullName: string, companyName: string) => {
     try {
-      // console.log('AuthContext: Attempting sign up:', { email, fullName, companyName }); // Reduce noise?
       const signupOptions = { data: { full_name: fullName, company_name: companyName } };
-      // console.log('AuthContext: Supabase signup payload:', { email, options: signupOptions }); // Reduce noise?
       const { error } = await supabase.auth.signUp({ email, password, options: signupOptions });
       if (error) throw error;
       toast({ title: 'Account created', description: 'Please check your email to verify.' });
@@ -247,7 +228,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const signOut = useCallback(async () => {
     try {
-      // console.log('AuthContext: Attempting sign out...'); // Reduce noise?
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     } catch (error: any) {
@@ -259,7 +239,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
 
   // --- Context Value ---
-  // Ensure the value object has a stable identity or use useMemo
   const value = React.useMemo(() => ({
     user,
     session,

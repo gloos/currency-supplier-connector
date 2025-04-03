@@ -9,9 +9,174 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      cached_categories: {
+        Row: {
+          allowable_for_tax: boolean | null
+          category_type: string | null
+          company_id: string
+          created_at: string | null
+          description: string | null
+          freeagent_url: string
+          id: string
+          nominal_code: string | null
+          raw_data: Json | null
+          synced_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          allowable_for_tax?: boolean | null
+          category_type?: string | null
+          company_id: string
+          created_at?: string | null
+          description?: string | null
+          freeagent_url: string
+          id?: string
+          nominal_code?: string | null
+          raw_data?: Json | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          allowable_for_tax?: boolean | null
+          category_type?: string | null
+          company_id?: string
+          created_at?: string | null
+          description?: string | null
+          freeagent_url?: string
+          id?: string
+          nominal_code?: string | null
+          raw_data?: Json | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cached_categories_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cached_contacts: {
+        Row: {
+          billing_email: string | null
+          company_id: string
+          created_at: string | null
+          email: string | null
+          first_name: string | null
+          freeagent_url: string
+          id: string
+          is_customer: boolean | null
+          is_supplier: boolean | null
+          last_name: string | null
+          name: string | null
+          raw_data: Json | null
+          synced_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          billing_email?: string | null
+          company_id: string
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          freeagent_url: string
+          id?: string
+          is_customer?: boolean | null
+          is_supplier?: boolean | null
+          last_name?: string | null
+          name?: string | null
+          raw_data?: Json | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          billing_email?: string | null
+          company_id?: string
+          created_at?: string | null
+          email?: string | null
+          first_name?: string | null
+          freeagent_url?: string
+          id?: string
+          is_customer?: boolean | null
+          is_supplier?: boolean | null
+          last_name?: string | null
+          name?: string | null
+          raw_data?: Json | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cached_contacts_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      cached_projects: {
+        Row: {
+          budget_units: number | null
+          company_id: string
+          created_at: string | null
+          freeagent_contact_url: string | null
+          freeagent_url: string
+          id: string
+          is_ir35: boolean | null
+          name: string | null
+          raw_data: Json | null
+          status: string | null
+          synced_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          budget_units?: number | null
+          company_id: string
+          created_at?: string | null
+          freeagent_contact_url?: string | null
+          freeagent_url: string
+          id?: string
+          is_ir35?: boolean | null
+          name?: string | null
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          budget_units?: number | null
+          company_id?: string
+          created_at?: string | null
+          freeagent_contact_url?: string | null
+          freeagent_url?: string
+          id?: string
+          is_ir35?: boolean | null
+          name?: string | null
+          raw_data?: Json | null
+          status?: string | null
+          synced_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "cached_projects_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       companies: {
         Row: {
           created_at: string
+          fa_company_name: string | null
+          fa_company_url: string | null
+          fa_default_currency: string | null
           id: string
           name: string
           slug: string
@@ -19,6 +184,9 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          fa_company_name?: string | null
+          fa_company_url?: string | null
+          fa_default_currency?: string | null
           id?: string
           name: string
           slug: string
@@ -26,6 +194,9 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          fa_company_name?: string | null
+          fa_company_url?: string | null
+          fa_default_currency?: string | null
           id?: string
           name?: string
           slug?: string
@@ -67,39 +238,51 @@ export type Database = {
           access_token: string | null
           client_id: string
           client_secret: string
+          company_id: string | null
           created_at: string | null
+          expires_at: string | null
           id: number
           refresh_token: string | null
-          token_expiry: number | null
           updated_at: string | null
         }
         Insert: {
           access_token?: string | null
           client_id: string
           client_secret: string
+          company_id?: string | null
           created_at?: string | null
+          expires_at?: string | null
           id: number
           refresh_token?: string | null
-          token_expiry?: number | null
           updated_at?: string | null
         }
         Update: {
           access_token?: string | null
           client_id?: string
           client_secret?: string
+          company_id?: string | null
           created_at?: string | null
+          expires_at?: string | null
           id?: number
           refresh_token?: string | null
-          token_expiry?: number | null
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "freeagent_credentials_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: true
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       po_lines: {
         Row: {
           company_id: string
           created_at: string
           description: string
+          fa_category_url: string | null
           id: string
           purchase_order_id: string
           quantity: number
@@ -110,6 +293,7 @@ export type Database = {
           company_id: string
           created_at?: string
           description: string
+          fa_category_url?: string | null
           id?: string
           purchase_order_id: string
           quantity: number
@@ -120,6 +304,7 @@ export type Database = {
           company_id?: string
           created_at?: string
           description?: string
+          fa_category_url?: string | null
           id?: string
           purchase_order_id?: string
           quantity?: number
@@ -127,6 +312,20 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_poline_company"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fk_poline_fa_category"
+            columns: ["fa_category_url"]
+            isOneToOne: false
+            referencedRelation: "cached_categories"
+            referencedColumns: ["freeagent_url"]
+          },
           {
             foreignKeyName: "po_lines_company_id_fkey"
             columns: ["company_id"]
@@ -146,6 +345,7 @@ export type Database = {
       preferences: {
         Row: {
           auto_create_bills: boolean | null
+          company_id: string | null
           created_at: string | null
           default_currency: string | null
           id: number
@@ -153,6 +353,7 @@ export type Database = {
         }
         Insert: {
           auto_create_bills?: boolean | null
+          company_id?: string | null
           created_at?: string | null
           default_currency?: string | null
           id: number
@@ -160,12 +361,21 @@ export type Database = {
         }
         Update: {
           auto_create_bills?: boolean | null
+          company_id?: string | null
           created_at?: string | null
           default_currency?: string | null
           id?: number
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "preferences_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -204,6 +414,8 @@ export type Database = {
           created_at: string | null
           currency: string
           description: string | null
+          fa_contact_url: string | null
+          fa_project_url: string | null
           freeagent_bill_id: string | null
           id: string
           po_number: string
@@ -219,6 +431,8 @@ export type Database = {
           created_at?: string | null
           currency?: string
           description?: string | null
+          fa_contact_url?: string | null
+          fa_project_url?: string | null
           freeagent_bill_id?: string | null
           id?: string
           po_number: string
@@ -234,6 +448,8 @@ export type Database = {
           created_at?: string | null
           currency?: string
           description?: string | null
+          fa_contact_url?: string | null
+          fa_project_url?: string | null
           freeagent_bill_id?: string | null
           id?: string
           po_number?: string
@@ -244,6 +460,20 @@ export type Database = {
           user_id?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "fk_po_fa_contact"
+            columns: ["fa_contact_url"]
+            isOneToOne: false
+            referencedRelation: "cached_contacts"
+            referencedColumns: ["freeagent_url"]
+          },
+          {
+            foreignKeyName: "fk_po_fa_project"
+            columns: ["fa_project_url"]
+            isOneToOne: false
+            referencedRelation: "cached_projects"
+            referencedColumns: ["freeagent_url"]
+          },
           {
             foreignKeyName: "purchase_orders_company_id_fkey"
             columns: ["company_id"]

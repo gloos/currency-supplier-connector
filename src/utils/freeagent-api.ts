@@ -4,19 +4,25 @@ import { supabase } from "@/integrations/supabase/client"; // Use client instanc
 import { Supplier, Contact } from "@/types/freeagent";
 
 // --- Constants ---
-const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app";
+const FREEAGENT_AUTH_URL = "https://api.sandbox.freeagent.com/v2/approve_app"; // Use Sandbox or Production
 
 // --- Dynamically get the redirect URI for the auth URL ---
 const getRedirectUri = () => {
+  // Ensure this generates the correct URL where your Settings page is hosted
   const redirectUri = `${window.location.origin}/settings`;
   return redirectUri;
 };
 
-// --- Custom Error Class (Optional Client-Side) ---
-export class FreeAgentClientError extends Error {
-  constructor(message: string) {
+// --- Custom Error Class ---
+// Keep if needed for disconnect error handling, otherwise potentially remove
+export class FreeAgentError extends Error {
+  constructor(
+    message: string,
+    public status?: number,
+    public data?: any
+  ) {
     super(message);
-    this.name = 'FreeAgentClientError';
+    this.name = 'FreeAgentError';
   }
 }
 
@@ -24,143 +30,72 @@ export class FreeAgentClientError extends Error {
 export const freeAgentApi = {
 
   /**
-   * Loads minimal credential info (Client ID and connection status) from Supabase.
-   * Returns null if not configured or error occurs.
+   * Generates the FreeAgent OAuth authorization URL.
+   * Requires the Client ID from environment variables.
    */
-  async loadCredentials(): Promise<{ clientId: string; isConnected: boolean } | null> {
-    // console.log("[Client API] Checking FreeAgent connection status..."); // Reduce noise
-    try {
-      const { data, error } = await supabase
-        .from('freeagent_credentials')
-        .select('client_id, access_token') // Only fetch non-sensitive info
-        .eq('id', 1)
-        .maybeSingle();
-
-      if (error) {
-        console.error("[Client API] Error loading credentials status:", error);
-        return null;
-      }
-      if (!data) {
-        // console.log("[Client API] No FreeAgent credentials record found."); // Reduce noise
-        return null;
-      }
-      const result = {
-        clientId: data.client_id || "",
-        isConnected: !!data.access_token, // Connection based on token presence
-      };
-      // console.log("[Client API] FreeAgent connection status:", result); // Reduce noise
-      return result;
-    } catch (error) {
-      console.error("[Client API] Exception loading credentials status:", error);
-      return null;
+  getAuthUrl(): string {
+    const clientId = import.meta.env.VITE_FREEAGENT_CLIENT_ID;
+    if (!clientId) {
+        console.error("VITE_FREEAGENT_CLIENT_ID is not set in environment variables.");
+        throw new Error("FreeAgent Client ID is missing. Cannot initiate connection.");
     }
-  },
-
-  /**
-   * Generates the FreeAgent OAuth authorization URL. Requires Client ID.
-   */
-  getAuthUrl(clientId: string): string {
     const trimmedClientId = clientId.trim();
-    if (!trimmedClientId) {
-        throw new FreeAgentClientError("Client ID is required to generate the authorization URL.");
-    }
     const redirectUri = getRedirectUri();
+
     const params = new URLSearchParams({
       client_id: trimmedClientId,
       response_type: 'code',
       redirect_uri: redirectUri,
+      // Request necessary scopes. 'full' is broad, refine based on minimum needs.
+      scope: 'full',
     });
+
     const authUrl = `${FREEAGENT_AUTH_URL}?${params.toString()}`;
-    console.log("[Client API] Generated FreeAgent Auth URL:", authUrl);
+    console.log("Generated FreeAgent Auth URL:", authUrl);
     return authUrl;
   },
 
   /**
-   * Fetches contacts from FreeAgent by invoking the secure Edge Function.
+   * Disconnects from FreeAgent by deleting the credentials stored in Supabase.
+   * Requires the specific ID of the credential row to delete.
+   *
+   * WARNING: Consider moving this to a secure 'disconnect-freeagent' Edge Function
+   *          that verifies ownership server-side before deleting.
+   *          Direct client-side deletion relies heavily on strict RLS policies.
    */
-  async getContacts(): Promise<Contact[]> {
-    console.log("[Client API] Requesting contacts via Edge Function...");
+  async disconnect(credentialRowId: number): Promise<void> {
+    console.log(`Attempting to disconnect FreeAgent (deleting credential row ID: ${credentialRowId})...`);
     try {
-      const { data: functionData, error: functionError } = await supabase.functions.invoke(
-        'get-freeagent-contacts' // Invoke the function by name
-      );
-
-      if (functionError) {
-        console.error('[Client API] Edge Function invocation error (getContacts):', functionError);
-        throw new Error(functionError.message || 'Failed to invoke backend function for contacts.');
-      }
-      if (functionData?.error) {
-         console.error('[Client API] Edge Function execution error (getContacts):', functionData.error);
-         throw new Error(functionData.error);
-      }
-      if (!Array.isArray(functionData?.contacts)) {
-        console.warn('[Client API] No contacts array in Edge Function response', functionData);
-        return []; // Return empty array if contacts are missing
-      }
-
-      console.log(`[Client API] Received ${functionData.contacts.length} contacts.`);
-      return functionData.contacts as Contact[];
-
-    } catch (error) {
-      console.error("[Client API] Error fetching contacts:", error);
-      toast.error("Failed to fetch contacts", {
-        description: error instanceof Error ? error.message : "An unexpected error occurred."
-      });
-      throw new FreeAgentClientError(error instanceof Error ? error.message : "Failed to fetch contacts.");
-    }
-  },
-
-  /**
-   * Converts a FreeAgent Contact object to the Supplier format.
-   */
-  contactToSupplier(contact: Contact): Supplier {
-    return {
-      id: contact.url,
-      name: contact.organisation_name || `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || "Unnamed Contact",
-      email: contact.email || contact.billing_email || ''
-    };
-  },
-
-  /**
-   * Gets suppliers by fetching contacts via the secure Edge Function and formatting.
-   */
-  async getSuppliers(): Promise<Supplier[]> {
-    try {
-      const contacts = await this.getContacts(); // Calls secure version
-      return contacts.map(contact => this.contactToSupplier(contact));
-    } catch (error) {
-      // Error already handled/toasted in getContacts
-      console.error("[Client API] Error formatting suppliers:", error);
-      // Re-throw specific client error
-      throw new FreeAgentClientError("Failed to process supplier list.");
-    }
-  },
-
-  /**
-   * Disconnects from FreeAgent by deleting credentials stored in Supabase.
-   * Assumes RLS allows the deletion for the authenticated user.
-   */
-  async disconnect(): Promise<void> {
-    console.log("[Client API] Attempting to disconnect FreeAgent...");
-    try {
+      // Delete the specific credential row for the user/company
       const { error } = await supabase
         .from('freeagent_credentials')
         .delete()
-        .eq('id', 1); // Target the specific row
+        .eq('id', credentialRowId); // Target the specific row ID
 
       if (error) {
-        console.error("[Client API] Supabase delete error:", error);
-        throw new FreeAgentClientError(`Failed to delete credentials: ${error.message}`);
+        console.error("Supabase delete error:", error);
+        // Check for RLS violation specifically if possible (e.g., error code/message)
+        if (error.code === '42501') { // Standard PostgreSQL permission denied code
+             throw new FreeAgentError("Permission denied. You might not be allowed to disconnect.", 403, error);
+        }
+        throw new FreeAgentError(`Failed to delete FreeAgent credentials: ${error.message}`, 500, error);
       }
-      console.log("[Client API] Disconnect successful (DB record deleted).");
-      // UI should update based on subsequent loadCredentials calls
+
+      console.log("Successfully deleted FreeAgent credentials from database.");
+
     } catch (error) {
-      console.error("[Client API] Error during disconnect:", error);
-       toast.error("Failed to disconnect", {
-           description: error instanceof Error ? error.message : "An unexpected error occurred."
-       });
-      // Re-throw specific client error
-      throw new FreeAgentClientError(error instanceof Error ? error.message : "Failed to disconnect.");
+      console.error("Error during FreeAgent disconnect:", error);
+      // Re-throw specific or generic error
+      if (error instanceof FreeAgentError) {
+          throw error;
+      } else if (error instanceof Error){
+          throw new FreeAgentError(`Failed to disconnect from FreeAgent: ${error.message}`);
+      } else {
+           throw new FreeAgentError("An unknown error occurred during disconnect.");
+      }
     }
   }
+
+  // REMOVED: loadCredentials, getContacts, contactToSupplier, getSuppliers
+  // REMOVED: Old internal methods like init, saveCredentials, exchangeCodeForToken, etc.
 };
