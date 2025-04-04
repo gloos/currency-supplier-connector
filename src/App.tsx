@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster"; // Shadcn Toaster
 import { Toaster as Sonner } from "@/components/ui/sonner"; // Sonner Toaster
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation, Outlet } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext"; // Import useAuth here
 // Page Imports
 // import Index from "./pages/Index"; // Likely not used directly in routing anymore
@@ -18,6 +18,7 @@ import { POForm } from './components/purchase-order/po-form';
 import PODetail from './components/purchase-order/po-detail';
 // Optional: Layout Component
 // import MainLayout from './components/layout/MainLayout'; // Example if you create one
+import MainLayout from './components/layout/MainLayout'; // Import the actual layout
 
 const queryClient = new QueryClient();
 
@@ -66,6 +67,8 @@ const AppRoutes = () => {
     console.log('AppRoutes - Waiting for auth/company data...');
     return <LoadingSpinner />;
   }
+  
+  console.log("AppRoutes - Auth/Company loaded, rendering Routes...");
 
   // --- Routing Logic (executes only when loading is false) ---
   return (
@@ -95,56 +98,53 @@ const AppRoutes = () => {
          element={user ? <Navigate to="/" replace /> : <AuthPage />}
       />
 
-      {/* Settings Page (Requires Auth, but not necessarily Company Link) */}
+      {/* Settings Page (Use Layout + Outlet + Nested Route) */}
       <Route
         path="/settings"
-        element={user ? <Settings /> : <Navigate to="/auth" replace state={{ from: location }} />}
-      />
-
-      {/* Company-Specific Routes (Requires Auth AND Company Link) */}
-      <Route
-        path="/company/:companySlug/*" // Use wildcard for nested routes
         element={
-          !user ? ( // Needs auth? Redirect to auth
+           user ? (
+             <MainLayout>
+               <Outlet /> {/* Use Outlet here */}
+             </MainLayout>
+           ) : (
+             <Navigate to="/auth" replace state={{ from: location }} />
+           )
+        }
+      >
+        {/* Define nested route for Settings page */}
+        <Route index element={<Settings />} />
+      </Route>
+
+      {/* Company-Specific Routes (Use Layout + Outlet + Nested Routes) */}
+      <Route
+        path="/company/:companySlug"
+        element={
+          !user ? ( 
             <Navigate to="/auth" replace state={{ from: location }} />
-          ) : !user.company?.slug ? ( // Needs company link? Redirect to settings
-            <Navigate to="/settings" replace state={{ from: location, message: "Company association required for this section." }} />
-          ) : user.company.slug !== location.pathname.split('/')[2] ? ( // Belongs to THIS company? (Basic check)
-            // This prevents accessing /company/other-slug/... if user belongs to 'my-slug'
-            // More robust checks might happen inside CompanyRoutes if needed
-            <Navigate to="/403" replace state={{ message: "Access denied to this company."}} /> // Or a specific "Forbidden" page
-          ) : ( // User has auth and is linked to a company, render nested routes
-            <CompanyRoutes />
+          ) : !user.company?.slug ? ( 
+            <Navigate to="/settings" replace state={{ from: location, message: "Company association required." }} />
+          ) : user.company.slug !== location.pathname.split('/')[2] ? (
+            <Navigate to="/403" replace state={{ message: "Access denied."}} /> 
+          ) : ( // User auth/company ok, render layout with outlet for children
+            <MainLayout>
+              <Outlet /> 
+            </MainLayout>
           )
         }
-      />
+      >
+        {/* Define nested routes as children - these render in the Outlet */}
+        <Route index element={<Navigate to="purchase-orders" replace />} />
+        <Route path="purchase-orders" element={<POList />} />
+        <Route path="purchase-orders/new" element={<POForm />} />
+        <Route path="purchase-orders/:id" element={<PODetail />} />
+        {/* Add other company-specific routes here */}
+        <Route path="*" element={<NotFound />} /> {/* Catch-all within company */}
+      </Route> 
 
-      {/* Catch-all 404 Not Found */}
+      {/* Catch-all 404 Not Found (Top Level) */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
 };
-
-// --- Nested Routes Component for Company Section ---
-// This component renders only if the user is authenticated AND associated with a company
-const CompanyRoutes = () => {
-    console.log("Rendering CompanyRoutes...");
-    // Optional: Add a layout wrapper specifically for company pages here
-    // e.g., <CompanyLayout> <Routes> ... </Routes> </CompanyLayout>
-    return (
-        <Routes>
-             {/* Default route within /company/:slug might be the list */}
-             <Route index element={<Navigate to="purchase-orders" replace />} />
-             <Route path="purchase-orders" element={<POList />} />
-             <Route path="purchase-orders/new" element={<POForm />} />
-             <Route path="purchase-orders/:id" element={<PODetail />} />
-             {/* Add other company-specific routes: /dashboard, /users, etc. */}
-             {/* <Route path="dashboard" element={<CompanyDashboard />} /> */}
-
-             {/* Catch-all within the company scope */}
-             <Route path="*" element={<NotFound />} />
-        </Routes>
-    );
-}
 
 export default App;

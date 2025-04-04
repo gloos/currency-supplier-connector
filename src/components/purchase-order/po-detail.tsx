@@ -121,7 +121,7 @@ export default function PODetail() {
       await emailService.sendPurchaseOrder(
         purchaseOrder.supplier_email,
         purchaseOrder.reference,
-        `Purchase Order with ${purchaseOrder.po_lines.length} items, total: ${formatCurrency(total, purchaseOrder.currency_code as CurrencyCode)}`
+        `Purchase Order with ${purchaseOrder.po_lines.length} items, total: ${formatCurrency(total, purchaseOrder.currency)}`
       );
       
       toast({
@@ -171,7 +171,7 @@ export default function PODetail() {
         <CardHeader>
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center">
             <div>
-              <CardTitle className="font-display text-2xl">Purchase Order: {purchaseOrder.reference}</CardTitle>
+              <CardTitle className="font-display text-2xl">Purchase Order: {purchaseOrder.po_number}</CardTitle>
               <CardDescription>
                 Issued on {new Date(purchaseOrder.created_at).toLocaleDateString()}
               </CardDescription>
@@ -200,7 +200,7 @@ export default function PODetail() {
               <h3 className="text-lg font-medium mb-2">Supplier</h3>
               <Card>
                 <CardContent className="p-4">
-                  <div className="font-medium">{purchaseOrder.supplier}</div>
+                  <div className="font-medium">{purchaseOrder.supplier_name}</div>
                   <div className="text-muted-foreground">{purchaseOrder.supplier_email}</div>
                 </CardContent>
               </Card>
@@ -212,7 +212,7 @@ export default function PODetail() {
                 <CardContent className="p-4 space-y-2">
                   <div className="flex justify-between">
                     <div className="text-muted-foreground">Reference</div>
-                    <div>{purchaseOrder.reference}</div>
+                    <div>{purchaseOrder.po_number}</div>
                   </div>
                   <div className="flex justify-between">
                     <div className="text-muted-foreground">Issue Date</div>
@@ -220,7 +220,7 @@ export default function PODetail() {
                   </div>
                   <div className="flex justify-between">
                     <div className="text-muted-foreground">Currency</div>
-                    <div>{purchaseOrder.currency_code}</div>
+                    <div>{purchaseOrder.currency}</div>
                   </div>
                 </CardContent>
               </Card>
@@ -245,12 +245,12 @@ export default function PODetail() {
                       <TableCell>{line.description}</TableCell>
                       <TableCell className="text-right">{line.quantity}</TableCell>
                       <TableCell className="text-right">
-                        {formatCurrency(line.unit_price, purchaseOrder.currency_code as CurrencyCode)}
+                        {formatCurrency(line.unit_price, purchaseOrder.currency)}
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(
                           calculateItemTotal(line.quantity, line.unit_price), 
-                          purchaseOrder.currency_code as CurrencyCode
+                          purchaseOrder.currency
                         )}
                       </TableCell>
                     </TableRow>
@@ -265,16 +265,16 @@ export default function PODetail() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <div className="text-muted-foreground">Subtotal</div>
-                  <div>{formatCurrency(subtotal, purchaseOrder.currency_code as CurrencyCode)}</div>
+                  <div>{formatCurrency(subtotal, purchaseOrder.currency)}</div>
                 </div>
                 <div className="flex justify-between">
                   <div className="text-muted-foreground">Tax (10%)</div>
-                  <div>{formatCurrency(tax, purchaseOrder.currency_code as CurrencyCode)}</div>
+                  <div>{formatCurrency(tax, purchaseOrder.currency)}</div>
                 </div>
                 <div className="h-px bg-border my-2" />
                 <div className="flex justify-between font-medium text-lg">
                   <div>Total</div>
-                  <div>{formatCurrency(total, purchaseOrder.currency_code as CurrencyCode)}</div>
+                  <div>{formatCurrency(total, purchaseOrder.currency)}</div>
                 </div>
               </div>
             </div>

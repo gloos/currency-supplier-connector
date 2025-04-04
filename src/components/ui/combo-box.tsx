@@ -33,6 +33,7 @@ interface ComboboxProps {
   notFoundMessage?: string;
   disabled?: boolean;
   isLoading?: boolean;
+  allowClear?: boolean; // Add allowClear prop
   className?: string; // Allow passing additional classes
 }
 
@@ -45,10 +46,17 @@ export function Combobox({
     notFoundMessage = "No options found.",
     disabled = false,
     isLoading = false,
+    allowClear = false, // Default to false
     className
 }: ComboboxProps) {
   const [open, setOpen] = React.useState(false)
   const selectedLabel = options.find((option) => option.value === value)?.label
+
+  // Function to handle clearing the selection
+  const handleClear = () => {
+      onChange(""); // Set value to empty string (or null if preferred)
+      setOpen(false); // Close the popover
+  }
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -74,6 +82,18 @@ export function Combobox({
           <CommandList>
             <CommandEmpty>{notFoundMessage}</CommandEmpty>
             <CommandGroup>
+              {/* Add Clear option if allowClear is true and a value is selected */}
+              {allowClear && value && (
+                <CommandItem
+                  key="clear-selection"
+                  value="_clear"
+                  onSelect={handleClear} // Call handleClear on select
+                  className="text-muted-foreground text-sm italic"
+                >
+                  {/* Optional: Add an icon like XCircle? */}
+                  Clear selection
+                </CommandItem>
+              )}
               {options.map((option) => (
                 <CommandItem
                   key={option.value}

@@ -5,8 +5,13 @@ import { SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 // --- Constants ---
 // Use environment variables for flexibility between sandbox/production
-const FREEAGENT_BASE_URL = Deno.env.get("FREEAGENT_API_BASE_URL") || "https://api.sandbox.freeagent.com/v2";
-const FREEAGENT_TOKEN_URL = `${FREEAGENT_BASE_URL}/token_endpoint`;
+const RAW_BASE_URL = Deno.env.get("FREEAGENT_API_BASE_URL") || "https://api.sandbox.freeagent.com";
+// Ensure no trailing slash and that /v2 is NOT included yet
+const CLEAN_BASE_URL = RAW_BASE_URL.replace(/\/+$/, '').replace(/\/v2$/, ''); 
+// Define V2 URL separately and use this consistently
+const FREEAGENT_BASE_URL_V2 = `${CLEAN_BASE_URL}/v2`;
+
+const FREEAGENT_TOKEN_URL = `${FREEAGENT_BASE_URL_V2}/token_endpoint`; // Use explicit V2 base
 const TOKEN_EXPIRY_BUFFER_SECONDS = 300; // Refresh token 5 minutes before actual expiry
 
 // --- Interfaces ---
@@ -171,20 +176,24 @@ export async function getFreeAgentClient(
     // 3. Return client instance with the valid token
     const client: FreeAgentClient = {
         get: async (endpoint: string): Promise<Response> => {
-            const url = `${FREEAGENT_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-            console.log(`FA Client GET: ${url}`); // Logging
+            // Ensure endpoint starts with /, remove potential leading /v2 from input endpoint
+            const cleanEndpoint = endpoint.startsWith('/') ? endpoint.replace(/^\/v2/, '') : '/' + endpoint.replace(/^\/?v2/, '');
+            const url = `${FREEAGENT_BASE_URL_V2}${cleanEndpoint}`; // Use explicit V2 base
+            console.log(`FA Client GET: ${url}`); 
             return fetch(url, {
                 method: "GET",
                 headers: {
                     "Authorization": `Bearer ${accessToken}`,
                     "Accept": "application/json",
-                    "User-Agent": "YourAppName/1.0", // Good practice to identify your app
+                    "User-Agent": "YourAppName/1.0", 
                 },
             });
         },
         post: async (endpoint: string, body: Record<string, unknown>): Promise<Response> => {
-            const url = `${FREEAGENT_BASE_URL}${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
-             console.log(`FA Client POST: ${url}`); // Logging
+             // Ensure endpoint starts with /, remove potential leading /v2 from input endpoint
+            const cleanEndpoint = endpoint.startsWith('/') ? endpoint.replace(/^\/v2/, '') : '/' + endpoint.replace(/^\/?v2/, '');
+            const url = `${FREEAGENT_BASE_URL_V2}${cleanEndpoint}`; // Use explicit V2 base
+             console.log(`FA Client POST: ${url}`);
             return fetch(url, {
                 method: "POST",
                 headers: {
@@ -196,59 +205,8 @@ export async function getFreeAgentClient(
                 body: JSON.stringify(body),
             });
         },
-        // Add put, delete if needed, mirroring the structure above
+        // Add put, delete if needed
     };
 
     return client;
-}
-
-export async function freeAgentApiRequest(
-  endpoint: string,
-  method: string = 'GET',
-  body: any | null = null,
-  accessToken: string
-): Promise<any> {
-    const url = `${FREEAGENT_BASE_URL}${endpoint}`;
-    const options: RequestInit = {
-      method,
-      headers: {
-        'Authorization': `Bearer ${accessToken}`,
-        'Accept': 'application/json',
-        'Content-Type': 'application/json',
-        'User-Agent': 'SupabaseEdgeFunction PO Tool/1.0', // Identify your app
-      },
-    };
-    if (body && (method === 'POST' || method === 'PUT')) {
-      options.body = JSON.stringify(body);
-    }
-
-    console.log(`[Shared Helper] FreeAgent Request: ${method} ${url}`);
-    // Avoid logging body in production unless necessary for debugging specific issues
-    // if(body) console.log('Request Body:', JSON.stringify(body, null, 2));
-
-    const response = await fetch(url, options);
-    let responseData;
-    try {
-        const text = await response.text();
-        responseData = text ? JSON.parse(text) : null; // Handle empty responses
-    } catch(e) {
-        console.error(`[Shared Helper] Failed to parse FreeAgent response JSON from ${url}:`, e);
-        if (response.ok) {
-             throw new Error(`FreeAgent API Error: Invalid JSON response from ${url}`);
-        }
-        responseData = { error: "Failed to parse response" };
-    }
-
-    console.log(`[Shared Helper] FreeAgent Response Status (${url}): ${response.status}`);
-
-    if (!response.ok) {
-       const errorDetail = responseData?.error_description || responseData?.error || `API request failed with status ${response.status}`;
-       console.error(`[Shared Helper] FreeAgent API Error (${url}): Status ${response.status}, Detail: ${errorDetail}`);
-       const error = new Error(`FreeAgent API Error: ${errorDetail}`);
-       (error as any).status = response.status;
-       (error as any).data = responseData;
-       throw error;
-    }
-
-    return responseData;
 }

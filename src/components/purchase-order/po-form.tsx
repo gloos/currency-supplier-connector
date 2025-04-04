@@ -107,26 +107,26 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
 
     // --- Data Fetching with React Query ---
 
-    // Fetch Suppliers from Cached Contacts
-    const { data: supplierOptions, isLoading: isLoadingSuppliers, error: supplierError } = useQuery<
+    // Fetch All Contacts for Supplier Dropdown
+    const { data: contactOptions, isLoading: isLoadingContacts, error: contactError } = useQuery<
         ComboboxOption[], Error // Add Error type
     >({
-        queryKey: ['cachedContacts', companyId, 'suppliers'],
+        queryKey: ['cachedContacts', companyId, 'all'], // Changed key to reflect all contacts
         queryFn: async (): Promise<ComboboxOption[]> => {
             if (!companyId) return []; // Return empty array if no companyId
             const { data, error } = await supabase
-                .from('cached_contacts') // Use table name from generated types
+                .from('cached_contacts') 
                 .select('freeagent_url, name')
                 .eq('company_id', companyId)
-                .eq('is_supplier', true)
+                // .eq('is_supplier', true) // REMOVED filter
                 .order('name', { ascending: true });
 
             if (error) {
-                console.error("Error fetching suppliers from cache:", error);
-                throw new Error(`Failed to load suppliers: ${error.message}`);
+                console.error("Error fetching contacts from cache:", error);
+                throw new Error(`Failed to load contacts: ${error.message}`);
             }
-            // Map the result (which is now correctly typed) to ComboboxOption
-            return (data as CachedContact[] | null)?.map(s => ({ value: s.freeagent_url, label: s.name ?? 'Unnamed' })) ?? [];
+            // Map the result to ComboboxOption
+            return (data as CachedContact[] | null)?.map(c => ({ value: c.freeagent_url, label: c.name ?? 'Unnamed' })) ?? [];
         },
         enabled: !!companyId,
         staleTime: 10 * 60 * 1000,
@@ -219,10 +219,19 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
             const successMessage = isNew ? "Purchase Order created!" : "Purchase Order updated!";
             toast(successMessage);
             queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
-            // Assuming function returns the full PO including its ID in data.purchaseOrder.id
+            
             const returnedPoId = data?.purchaseOrder?.id ?? poIdParam;
+            const companySlug = user?.company?.slug; // Get company slug from auth context
+            
+            // Construct the correct path including the company slug
+            const redirectPath = companySlug && returnedPoId 
+                ? `/company/${companySlug}/purchase-orders/${returnedPoId}` 
+                : companySlug 
+                    ? `/company/${companySlug}/purchase-orders` // Fallback to list if ID missing
+                    : '/settings'; // Fallback to settings if slug missing
+            
             queryClient.invalidateQueries({ queryKey: ['purchaseOrder', returnedPoId] });
-            navigate(returnedPoId ? `/purchase-orders/${returnedPoId}` : '/purchase-orders');
+            navigate(redirectPath); // Use the constructed path
         },
         onError: (error) => {
             toast("Error Saving PO", {
@@ -266,127 +275,129 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
         return () => subscription.unsubscribe();
     }, [form, calculateTotal, fields]); // Watch fields array too
 
-    // --- Render Form --- 
+    // --- Render Logic ---
     return (
         <Form {...form}>
-            {/* Add novalidate to prevent browser validation interfering with react-hook-form */}
-            <form noValidate onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
                 <Card>
                     <CardHeader>
                         <CardTitle>{isNew ? 'Create New Purchase Order' : 'Edit Purchase Order'}</CardTitle>
                     </CardHeader>
-                    <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                        {/* PO Number */}
+                    <CardContent className="grid gap-6 md:grid-cols-3">
                         <FormField
                             control={form.control}
                             name="po_number"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>PO Number *</FormLabel>
+                                    <FormLabel>PO Number</FormLabel>
                                     <FormControl>
-                                        <Input placeholder="Enter PO Number" {...field} required />
+                                        <Input placeholder="Enter PO Number" {...field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
 
-                        {/* Supplier Combobox */}
                         <FormField
                             control={form.control}
                             name="supplier_url"
                             render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                    <FormLabel>Supplier *</FormLabel>
+                                <FormItem>
+                                    <FormLabel>Supplier</FormLabel>
                                     <FormControl>
-                                         <Combobox
-                                             options={supplierOptions ?? []}
-                                             value={field.value}
-                                             onChange={field.onChange}
-                                             placeholder={isLoadingSuppliers ? "Loading..." : "Select supplier..."}
-                                             searchPlaceholder="Search suppliers..."
-                                             notFoundMessage="No suppliers found. Sync in Settings?"
-                                             isLoading={isLoadingSuppliers}
-                                             disabled={isLoadingSuppliers || mutation.isPending}
-                                         />
+                                        <Combobox
+                                            options={contactOptions || []}
+                                            value={field.value}
+                                            onChange={field.onChange}
+                                            placeholder={isLoadingContacts ? "Loading..." : "Select supplier..."}
+                                            searchPlaceholder="Search suppliers..."
+                                            notFoundMessage="No suppliers found. Sync in Settings?"
+                                            isLoading={isLoadingContacts}
+                                            disabled={isLoadingContacts || mutation.isPending}
+                                        />
                                     </FormControl>
-                                    {supplierError && (
-                                         <Alert variant="destructive" className="mt-1 text-xs">
-                                             <AlertCircle className="h-3 w-3 mr-1 inline" />
-                                             <AlertDescription className="inline">{supplierError.message}</AlertDescription>
-                                         </Alert>
+                                    {contactError && (
+                                        <Alert variant="destructive" className="mt-1 text-xs">
+                                            <AlertCircle className="h-3 w-3 mr-1 inline" />
+                                            <AlertDescription className="inline">{contactError.message}</AlertDescription>
+                                        </Alert>
                                     )}
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
 
-                        {/* Issue Date */}
-                         <FormField
+                        <FormField
                             control={form.control}
                             name="issue_date"
                             render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                    <FormLabel>Issue Date *</FormLabel>
-                                     <DatePicker field={field} />
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-
-                        {/* Delivery Date (Optional) */}
-                         <FormField
-                            control={form.control}
-                            name="delivery_date"
-                            render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                    <FormLabel>Delivery Date</FormLabel>
-                                    <DatePicker field={field} nullable placeholder="Optional Delivery Date"/>
-                                    <FormMessage />
-                                </FormItem>
-                            )}
-                        />
-
-                        {/* Currency */}
-                         <FormField
-                            control={form.control}
-                            name="currency"
-                            render={({ field }) => (
-                                <FormItem>
-                                    <FormLabel>Currency *</FormLabel>
+                                <FormItem className="flex flex-col pt-2">
+                                    <FormLabel>Issue Date</FormLabel>
                                     <FormControl>
-                                         <Input placeholder="GBP" {...field} maxLength={3} className="uppercase w-24" required />
+                                        <DatePicker field={field} />
                                     </FormControl>
                                     <FormMessage />
                                 </FormItem>
                             )}
                         />
 
-                        {/* Project Combobox */}
+                        <FormField
+                            control={form.control}
+                            name="delivery_date"
+                            render={({ field }) => (
+                                <FormItem className="flex flex-col pt-2">
+                                    <FormLabel>Delivery Date (Optional)</FormLabel>
+                                    <FormControl>
+                                        <DatePicker 
+                                            field={field} 
+                                            nullable={true} 
+                                            placeholder="Optional Delivery Date"
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
+                            name="currency"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Currency</FormLabel>
+                                    <FormControl>
+                                        <Input placeholder="e.g., GBP" {...field} maxLength={3} />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
                         <FormField
                             control={form.control}
                             name="project_url"
                             render={({ field }) => (
-                                <FormItem className="flex flex-col">
-                                    <FormLabel>Project</FormLabel>
-                                     <FormControl>
-                                          <Combobox
-                                              options={projectOptions ?? []}
-                                              value={field.value ?? ""}
-                                              onChange={field.onChange}
-                                              placeholder={isLoadingProjects ? "Loading..." : "Optional: Select project..."}
-                                              searchPlaceholder="Search projects..."
-                                              notFoundMessage="No projects found."
-                                              isLoading={isLoadingProjects}
-                                              disabled={isLoadingProjects || mutation.isPending}
-                                          />
-                                     </FormControl>
-                                      {projectError && (
-                                         <Alert variant="destructive" className="mt-1 text-xs">
-                                             <AlertCircle className="h-3 w-3 mr-1 inline" />
-                                             <AlertDescription className="inline">{projectError.message}</AlertDescription>
-                                         </Alert>
-                                      )}
+                                <FormItem>
+                                    <FormLabel>Project (Optional)</FormLabel>
+                                    <FormControl>
+                                        <Combobox
+                                            options={projectOptions ?? []}
+                                            value={field.value ?? ''}
+                                            onChange={field.onChange}
+                                            placeholder={isLoadingProjects ? "Loading..." : "Select project..."}
+                                            searchPlaceholder="Search projects..."
+                                            notFoundMessage="No projects found. Sync in Settings?"
+                                            isLoading={isLoadingProjects}
+                                            disabled={isLoadingProjects || mutation.isPending}
+                                            allowClear={true}
+                                        />
+                                    </FormControl>
+                                    {projectError && (
+                                        <Alert variant="destructive" className="mt-1 text-xs">
+                                            <AlertCircle className="h-3 w-3 mr-1 inline" />
+                                            <AlertDescription className="inline">{projectError.message}</AlertDescription>
+                                        </Alert>
+                                    )}
                                     <FormMessage />
                                 </FormItem>
                             )}
@@ -399,170 +410,154 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
                         <CardTitle>Line Items</CardTitle>
                     </CardHeader>
                     <CardContent>
-                        <div className="overflow-x-auto">
-                            <Table className="min-w-full">
-                                <TableHeader>
-                                    <TableRow>
-                                        <TableHead className="w-[35%]">Description *</TableHead>
-                                        <TableHead className="w-[25%]">Category</TableHead>
-                                        <TableHead className="w-[10%] text-right">Quantity *</TableHead>
-                                        <TableHead className="w-[15%] text-right">Unit Price *</TableHead>
-                                        <TableHead className="w-[15%] text-right">Amount</TableHead>
-                                        <TableHead className="w-auto px-1">Del</TableHead>
-                                    </TableRow>
-                                </TableHeader>
-                                <TableBody>
-                                    {fields.map((item, index) => (
+                        <Table>
+                            <TableHeader>
+                                <TableRow>
+                                    <TableHead className="w-[40%]">Description</TableHead>
+                                    <TableHead className="w-[15%]">Quantity</TableHead>
+                                    <TableHead className="w-[15%]">Unit Price</TableHead>
+                                    <TableHead className="w-[20%]">Category (Optional)</TableHead>
+                                    <TableHead className="w-[10%] text-right">Total</TableHead>
+                                    <TableHead className="w-[5%]"></TableHead>
+                                </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                                {fields.map((item, index) => {
+                                    const quantity = form.watch(`line_items.${index}.quantity`);
+                                    const unitPrice = form.watch(`line_items.${index}.unit_price`);
+                                    const lineTotal = (quantity || 0) * (unitPrice || 0);
+                                    
+                                    return (
                                         <TableRow key={item.id}>
-                                            <TableCell className="align-top pt-3">
+                                            <TableCell>
                                                 <FormField
                                                     control={form.control}
                                                     name={`line_items.${index}.description`}
                                                     render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormControl>
-                                                                <Input placeholder="Item description" {...field} required/>
-                                                            </FormControl>
-                                                            <FormMessage className="text-xs"/>
-                                                         </FormItem>
+                                                        <Input placeholder="Item description" {...field} />
                                                     )}
                                                 />
                                             </TableCell>
-                                            <TableCell className="align-top pt-3">
-                                                 <FormField
-                                                     control={form.control}
-                                                     name={`line_items.${index}.category_url`}
-                                                     render={({ field }) => (
-                                                        <FormItem>
-                                                             <FormControl>
-                                                                  <Combobox
-                                                                     options={categoryOptions ?? []}
-                                                                     value={field.value ?? ""}
-                                                                     onChange={field.onChange}
-                                                                     placeholder={isLoadingCategories ? "..." : "Select category..."}
-                                                                     searchPlaceholder="Search..."
-                                                                     notFoundMessage="No categories."
-                                                                     isLoading={isLoadingCategories}
-                                                                     disabled={isLoadingCategories || mutation.isPending}
-                                                                     className="w-full" // Ensure it fits
-                                                                 />
-                                                             </FormControl>
-                                                            <FormMessage className="text-xs"/>
-                                                         </FormItem>
-                                                     )}
-                                                 />
-                                             </TableCell>
-                                            <TableCell className="align-top pt-3 text-right">
+                                            <TableCell>
                                                 <FormField
                                                     control={form.control}
                                                     name={`line_items.${index}.quantity`}
                                                     render={({ field }) => (
-                                                        <FormItem>
-                                                            <FormControl>
-                                                                 <Input type="number" step="any" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} className="text-right w-20" required min={0.01} />
-                                                            </FormControl>
-                                                             <FormMessage className="text-xs"/>
-                                                        </FormItem>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="1"
+                                                            {...field}
+                                                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                                            step="any"
+                                                        />
                                                     )}
                                                 />
                                             </TableCell>
-                                            <TableCell className="align-top pt-3 text-right">
-                                                 <FormField
+                                            <TableCell>
+                                                <FormField
                                                     control={form.control}
                                                     name={`line_items.${index}.unit_price`}
                                                     render={({ field }) => (
-                                                        <FormItem>
-                                                             <FormControl>
-                                                                 <Input type="number" step="any" {...field} onChange={e => field.onChange(parseFloat(e.target.value) || 0)} className="text-right w-28" required min={0} />
-                                                             </FormControl>
-                                                             <FormMessage className="text-xs"/>
-                                                        </FormItem>
+                                                        <Input
+                                                            type="number"
+                                                            placeholder="0.00"
+                                                            {...field}
+                                                            onChange={(e) => field.onChange(parseFloat(e.target.value) || 0)}
+                                                            step="any"
+                                                        />
                                                     )}
                                                 />
                                             </TableCell>
-                                            <TableCell className="align-top pt-5 text-right font-medium">
-                                                {formatCurrency(
-                                                    (form.watch(`line_items.${index}.quantity`) || 0) * (form.watch(`line_items.${index}.unit_price`) || 0),
-                                                    form.watch("currency")
+                                            <TableCell>
+                                                <FormField
+                                                    control={form.control}
+                                                    name={`line_items.${index}.category_url`}
+                                                    render={({ field }) => (
+                                                        <Combobox
+                                                            options={categoryOptions ?? []}
+                                                            value={field.value ?? ''}
+                                                            onChange={field.onChange}
+                                                            placeholder={isLoadingCategories ? "Loading..." : "Select category..."}
+                                                            searchPlaceholder="Search categories..."
+                                                            notFoundMessage="No categories found. Sync in Settings?"
+                                                            isLoading={isLoadingCategories}
+                                                            disabled={isLoadingCategories || mutation.isPending}
+                                                            allowClear={true}
+                                                        />
+                                                    )}
+                                                />
+                                                {categoryError && (
+                                                    <Alert variant="destructive" className="mt-1 text-xs">
+                                                        <AlertCircle className="h-3 w-3 mr-1 inline" />
+                                                        <AlertDescription className="inline">{categoryError.message}</AlertDescription>
+                                                    </Alert>
                                                 )}
                                             </TableCell>
-                                            <TableCell className="align-top pt-3 px-1">
+                                            <TableCell className="text-right font-medium">
+                                                {formatCurrency(lineTotal, form.watch('currency') as any)}
+                                            </TableCell>
+                                            <TableCell className="text-right">
                                                 <Button
                                                     type="button"
                                                     variant="ghost"
                                                     size="icon"
                                                     onClick={() => removeLineItem(index)}
-                                                    disabled={fields.length <= 1 || mutation.isPending}
-                                                    aria-label="Remove line item"
-                                                    className="h-8 w-8 mt-1 text-muted-foreground hover:text-destructive"
+                                                    disabled={fields.length <= 1}
                                                 >
                                                     <Trash2 className="h-4 w-4" />
                                                 </Button>
                                             </TableCell>
                                         </TableRow>
-                                    ))}
-                                </TableBody>
-                            </Table>
-                        </div>
-                        {categoryError && (
-                             <Alert variant="destructive" className="mt-2 text-xs">
-                                 <AlertCircle className="h-3 w-3 mr-1 inline" />
-                                 <AlertDescription className="inline">{categoryError.message}</AlertDescription>
-                             </Alert>
-                         )}
+                                    );
+                                })}
+                            </TableBody>
+                        </Table>
                         <Button
                             type="button"
                             variant="outline"
                             size="sm"
-                            onClick={addNewLineItem}
                             className="mt-4"
-                            disabled={mutation.isPending}
+                            onClick={addNewLineItem}
                         >
                             Add Line Item
                         </Button>
-                         {form.formState.errors.line_items?.root && (
-                             <Alert variant="destructive" className="mt-2">
-                                  <AlertCircle className="h-4 w-4" />
-                                 <AlertTitle>Error in Line Items</AlertTitle>
-                                 <AlertDescription>{form.formState.errors.line_items.root.message}</AlertDescription>
-                             </Alert>
-                         )}
                     </CardContent>
                 </Card>
-
-                 <Card>
-                     <CardHeader>
-                         <CardTitle>Notes & Total</CardTitle>
-                     </CardHeader>
-                     <CardContent className="space-y-4">
+                
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Notes</CardTitle>
+                    </CardHeader>
+                    <CardContent>
                         <FormField
-                             control={form.control}
-                             name="notes"
-                             render={({ field }) => (
-                                 <FormItem>
-                                     <FormLabel>Notes</FormLabel>
-                                     <FormControl>
-                                          <Textarea placeholder="Optional notes for supplier or internal reference..." {...field} value={field.value ?? ""}/>
-                                     </FormControl>
-                                     <FormMessage />
-                                 </FormItem>
-                             )}
-                         />
-                         <div className="text-right text-xl font-bold">
-                             Total: {formatCurrency(total, form.watch("currency"))}
-                         </div>
+                            control={form.control}
+                            name="notes"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormControl>
+                                        <Textarea
+                                            placeholder="Add any notes for the supplier or internal reference..."
+                                            className="resize-none"
+                                            {...field}
+                                            value={field.value ?? ''}
+                                        />
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
                     </CardContent>
                 </Card>
 
-                <div className="flex justify-end space-x-2">
-                     <Button type="button" variant="outline" onClick={() => navigate(-1)} disabled={mutation.isPending}>
-                         Cancel
-                     </Button>
-                     <Button type="submit" disabled={mutation.isPending || isLoadingSuppliers || isLoadingProjects || isLoadingCategories}>
-                         {mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                         {isNew ? 'Create Purchase Order' : 'Update Purchase Order'}
-                     </Button>
-                 </div>
+                <div className="flex justify-end gap-2 mt-8">
+                    <Button type="button" variant="outline" onClick={() => navigate(-1)} disabled={mutation.isPending}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" disabled={mutation.isPending || isLoadingContacts || isLoadingProjects || isLoadingCategories}>
+                        {mutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                        {isNew ? 'Create Purchase Order' : 'Update Purchase Order'}
+                    </Button>
+                </div>
             </form>
         </Form>
     );

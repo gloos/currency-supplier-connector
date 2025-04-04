@@ -195,105 +195,101 @@ const Settings: React.FC = () => {
 
     // --- Render --- 
     return (
-        <div className="container mx-auto p-4">
-            <Card className="max-w-2xl mx-auto">
-                <CardHeader>
-                    <CardTitle>FreeAgent Integration</CardTitle>
-                    <CardDescription>
-                        Connect your FreeAgent account to sync contacts, projects, and categories.
-                    </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                    {/* Initial Loading State */}
-                    {isLoadingStatus && (
-                        <div className="flex items-center justify-center p-4">
-                             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                             <span className="ml-2 text-muted-foreground">Loading connection status...</span>
-                        </div>
-                    )}
+        <Card className="max-w-2xl mx-auto">
+            <CardHeader>
+                <CardTitle>FreeAgent Integration</CardTitle>
+                <CardDescription>
+                    Connect your FreeAgent account to sync contacts, projects, and categories.
+                </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                {/* Initial Loading State */}
+                {isLoadingStatus && (
+                    <div className="flex items-center justify-center p-4">
+                         <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                         <span className="ml-2 text-muted-foreground">Loading connection status...</span>
+                    </div>
+                )}
 
-                    {/* Status Loading Error */}
-                    {statusError && !isLoadingStatus && (
-                         <Alert variant="destructive">
-                           <AlertCircle className="h-4 w-4" />
-                           <AlertTitle>Error Loading Status</AlertTitle>
-                           <AlertDescription>
-                               {statusError instanceof Error ? statusError.message : "Could not load connection details."}
-                           </AlertDescription>
-                         </Alert>
-                    )}
+                {/* Status Loading Error */}
+                {statusError && !isLoadingStatus && (
+                     <Alert variant="destructive">
+                       <AlertCircle className="h-4 w-4" />
+                       <AlertTitle>Error Loading Status</AlertTitle>
+                       <AlertDescription>
+                           {statusError instanceof Error ? statusError.message : "Could not load connection details."}
+                       </AlertDescription>
+                     </Alert>
+                )}
 
-                    {/* OAuth Redirect Error */}
-                    {oauthError && !isLoading && (
-                         <Alert variant="destructive">
-                           <AlertCircle className="h-4 w-4" />
-                           <AlertTitle>Connection Error</AlertTitle>
-                           <AlertDescription>{oauthError}</AlertDescription>
-                         </Alert>
-                    )}
+                {/* OAuth Redirect Error */}
+                {oauthError && !isLoading && (
+                     <Alert variant="destructive">
+                       <AlertCircle className="h-4 w-4" />
+                       <AlertTitle>Connection Error</AlertTitle>
+                       <AlertDescription>{oauthError}</AlertDescription>
+                     </Alert>
+                )}
 
-                    {/* Main Content Area (when status loaded successfully) */}
-                    {!isLoadingStatus && !statusError && (
-                        <div>
-                            <div className="flex justify-between items-center mb-4">
-                                <p className="text-sm font-medium">
-                                    Status: {isLoadingStatus ? <Loader2 className="inline-block h-4 w-4 animate-spin ml-1" /> : (isConnected ? <span className="text-green-600 font-semibold ml-1">Connected</span> : <span className="text-red-600 font-semibold ml-1">Not Connected</span>)}
-                                </p>
-                                {isConnected && (
-                                    <p className="text-sm text-muted-foreground">Last Sync: {lastSyncTime}</p>
-                                )}
-                            </div>
-
-                            {!isConnected && !companyId && (
-                                <Alert variant="default" className="mb-4">
-                                    <AlertCircle className="h-4 w-4" />
-                                    <AlertTitle>Company Not Loaded</AlertTitle>
-                                    <AlertDescription>Cannot manage integration until company details are available.</AlertDescription>
-                                </Alert>
+                {/* Main Content Area (when status loaded successfully) */}
+                {!isLoadingStatus && !statusError && (
+                    <div>
+                        <div className="flex justify-between items-center mb-4">
+                            <p className="text-sm font-medium">
+                                Status: {isLoadingStatus ? <Loader2 className="inline-block h-4 w-4 animate-spin ml-1" /> : (isConnected ? <span className="text-green-600 font-semibold ml-1">Connected</span> : <span className="text-red-600 font-semibold ml-1">Not Connected</span>)}
+                            </p>
+                            {isConnected && (
+                                <p className="text-sm text-muted-foreground">Last Sync: {lastSyncTime}</p>
                             )}
+                        </div>
 
-                            {/* Action Buttons */  }
-                            <div className="flex space-x-2 pt-2">
-                                {isConnected ? (
-                                    <>
-                                        <Button
-                                            onClick={handleSyncNow}
-                                            disabled={isLoading}
-                                            aria-label="Sync FreeAgent data now"
-                                            size="sm"
-                                        >
-                                            {triggerSync.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                            Sync Now
-                                        </Button>
-                                        <Button
-                                            variant="destructive"
-                                            onClick={handleDisconnect}
-                                            disabled={isLoading}
-                                            aria-label="Disconnect from FreeAgent"
-                                            size="sm"
-                                        >
-                                            {disconnectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                                            Disconnect
-                                        </Button>
-                                    </>
-                                ) : (
+                        {!isConnected && !companyId && (
+                            <Alert variant="default" className="mb-4">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Company Not Loaded</AlertTitle>
+                                <AlertDescription>Cannot manage integration until company details are available.</AlertDescription>
+                            </Alert>
+                        )}
+
+                        {/* Action Buttons */  }
+                        <div className="flex space-x-2 pt-2">
+                            {isConnected ? (
+                                <>
                                     <Button
-                                        onClick={handleConnect}
-                                        disabled={isLoading || !companyId} // Disable if loading or no company ID
-                                        aria-label="Connect to FreeAgent"
+                                        onClick={handleSyncNow}
+                                        disabled={isLoading}
+                                        aria-label="Sync FreeAgent data now"
                                         size="sm"
                                     >
-                                        Connect to FreeAgent
+                                        {triggerSync.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        Sync Now
                                     </Button>
-                                )}
-                            </div>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={handleDisconnect}
+                                        disabled={isLoading}
+                                        aria-label="Disconnect from FreeAgent"
+                                        size="sm"
+                                    >
+                                        {disconnectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                        Disconnect
+                                    </Button>
+                                </>
+                            ) : (
+                                <Button
+                                    onClick={handleConnect}
+                                    disabled={isLoading || !companyId} // Disable if loading or no company ID
+                                    aria-label="Connect to FreeAgent"
+                                    size="sm"
+                                >
+                                    Connect to FreeAgent
+                                </Button>
+                            )}
                         </div>
-                    )}
-                </CardContent>
-            </Card>
-
-            {/* Preferences Card can remain here if separate */}
-        </div>
+                    </div>
+                )}
+            </CardContent>
+        </Card>
     );
 };
 
