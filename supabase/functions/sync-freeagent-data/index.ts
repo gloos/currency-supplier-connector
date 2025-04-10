@@ -42,6 +42,15 @@ interface CompanyInfo {
     name: string;
     currency: string;
     company_type?: string;
+    address1?: string;
+    address2?: string;
+    address3?: string;
+    town?: string;
+    region?: string;
+    postcode?: string;
+    country?: string;
+    company_registration_number?: string;
+    sales_tax_registration_number?: string;
     // Add other relevant fields
 }
 
@@ -239,7 +248,7 @@ serve(async (req) => {
         console.log("Starting Supabase upsert...");
         const upsertPromises: Promise<PostgrestResponse<any> | PostgrestSingleResponse<any>>[] = [];
 
-        // Upsert Company Info (returns PostgrestSingleResponse)
+        // --- Upsert Company Info (Update existing 'companies' table) ---
         if (companyInfo) {
             upsertPromises.push(
                 supabaseAdmin
@@ -248,13 +257,41 @@ serve(async (req) => {
                         fa_company_url: companyInfo.url,
                         fa_company_name: companyInfo.name,
                         fa_default_currency: companyInfo.currency,
+                        // Keep other 'companies' fields as they are unless needed
+                        // last_synced_at: syncTimestamp // Maybe update this too?
                     })
-                    .eq('id', companyId!)
-                    .single() // Ensure it returns PostgrestSingleResponse
+                    .eq('id', companyId)
+            );
+
+            // --- Upsert into NEW 'company_details' table ---
+            const addressParts = [
+                companyInfo.address1,
+                companyInfo.address2,
+                companyInfo.address3,
+                companyInfo.town,
+                companyInfo.region,
+                companyInfo.postcode,
+                companyInfo.country,
+            ].filter(Boolean); // Filter out null/undefined/empty parts
+            const fullAddress = addressParts.join('\n'); // Join with newlines
+
+            const companyDetailsRecord = {
+                company_id: companyId, // Primary key linking to companies
+                name: companyInfo.name,
+                address: fullAddress || null, // Store formatted address or null
+                registration_number: companyInfo.company_registration_number || null,
+                sales_tax_registration_number: companyInfo.sales_tax_registration_number || null,
+                last_synced_at: syncTimestamp,
+            };
+
+            upsertPromises.push(
+                 supabaseAdmin
+                     .from('company_details')
+                     .upsert(companyDetailsRecord, { onConflict: 'company_id' })
             );
         }
 
-        // Upsert Contacts (returns PostgrestResponse)
+        // --- Upsert Contacts ---
         if (contacts.length > 0) {
             const contactData = contacts.map(c => ({
                 company_id: companyId!, // Assert non-null as we checked earlier
@@ -274,43 +311,46 @@ serve(async (req) => {
             );
         }
 
-        // Upsert Projects (returns PostgrestResponse)
-         if (projects.length > 0) {
-             const projectData = projects.map(p => ({
-                 company_id: companyId!,
-                 freeagent_url: p.url,
-                 name: p.name,
-                 status: p.status,
-                 budget_units: typeof p.budget_units === 'number' ? p.budget_units : null,
-                 is_ir35: p.is_ir35,
-                 freeagent_contact_url: p.contact,
-                 raw_data: p,
-                 synced_at: syncTimestamp,
-             }));
-             upsertPromises.push(
-                  supabaseAdmin.from('cached_projects').upsert(projectData, { onConflict: 'freeagent_url' })
-             );
-         }
+        // --- Upsert Projects ---
+        if (projects.length > 0) {
+            const projectData = projects.map(p => ({
+                company_id: companyId!,
+                freeagent_url: p.url,
+                name: p.name,
+                status: p.status,
+                budget_units: typeof p.budget_units === 'number' ? p.budget_units : null,
+                is_ir35: p.is_ir35,
+                freeagent_contact_url: p.contact,
+                raw_data: p,
+                synced_at: syncTimestamp,
+            }));
+            upsertPromises.push(
+                 supabaseAdmin.from('cached_projects').upsert(projectData, { onConflict: 'freeagent_url' })
+            );
+        }
 
-         // Upsert Categories (returns PostgrestResponse)
-         if (categories.length > 0) {
-              const categoryData = categories.map(cat => ({
-                  company_id: companyId!,
-                  freeagent_url: cat.url,
-                  nominal_code: cat.nominal_code,
-                  description: cat.description,
-                  category_type: cat.category_type, // Added during fetch
-                  allowable_for_tax: cat.allowable_for_tax,
-                  raw_data: cat,
-                  synced_at: syncTimestamp,
-              }));
-              upsertPromises.push(
-                   supabaseAdmin.from('cached_categories').upsert(categoryData, { onConflict: 'freeagent_url' })
-              );
-         }
+        // --- Upsert Categories ---
+        if (categories.length > 0) {
+            const categoryData = categories.map(cat => ({
+                company_id: companyId!,
+                freeagent_url: cat.url,
+                nominal_code: cat.nominal_code,
+                description: cat.description,
+                category_type: cat.category_type, // Added during fetch
+                allowable_for_tax: cat.allowable_for_tax,
+                raw_data: cat,
+                synced_at: syncTimestamp,
+            }));
+            upsertPromises.push(
+                 supabaseAdmin.from('cached_categories').upsert(categoryData, { onConflict: 'freeagent_url' })
+            );
+        }
 
-        // Execute all upserts
+        // 6. Execute all Upserts Concurrently
+        console.log(`Executing ${upsertPromises.length} upsert operations...`);
         const results = await Promise.allSettled(upsertPromises);
+
+        // 7. Process Upsert Results & Update Credentials Timestamp
         const upsertErrors: { source: string; reason: PostgrestError | any }[] = [];
 
         results.forEach((result, index) => {
@@ -334,7 +374,7 @@ serve(async (req) => {
 
         console.log("Supabase upsert successful.");
 
-        // 6. Return Success
+        // 8. Return Success
         return new Response(JSON.stringify({
              message: "Sync successful",
              syncedContacts: contacts.length,

@@ -28,48 +28,59 @@ export default function PODetail() {
   const [purchaseOrder, setPurchaseOrder] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null);
   const params = useParams();
   const { toast } = useToast();
   
   useEffect(() => {
-    const fetchPurchaseOrder = async () => {
+    const fetchPurchaseOrderAndDetails = async () => {
+      setLoading(true);
+      setError(null);
+      setLogoPublicUrl(null);
       try {
-        // First get the company ID from the slug
-        const { data: company } = await supabase
-          .from('companies')
-          .select('id')
-          .eq('slug', params.companySlug)
-          .single();
-
-        if (!company) {
-          throw new Error('Company not found');
-        }
-
-        // Then fetch PO details ensuring it belongs to this company
         const { data: po, error: poError } = await supabase
           .from('purchase_orders')
           .select(`
             *,
             po_lines (*)
           `)
-          .eq('company_id', company.id)
           .eq('id', params.id)
           .single();
 
-        if (poError) throw poError;
-        if (!po) throw new Error('Purchase order not found');
+        if (poError) throw new Error(`Fetching PO failed: ${poError.message}`);
+        if (!po) throw new Error('Purchase order not found.');
 
-        setPurchaseOrder(po);
+        let companyDetails = null;
+        if (po.company_id) {
+          const { data: details, error: detailsError } = await supabase
+            .from('company_details')
+            .select('*')
+            .eq('company_id', po.company_id)
+            .single();
+            
+          if (detailsError) {
+             console.warn(`Could not fetch company details: ${detailsError.message}`);
+          } else {
+             companyDetails = details;
+             if (companyDetails?.logo_storage_path) {
+                 const { data: urlData } = supabase.storage.from('companylogos').getPublicUrl(companyDetails.logo_storage_path);
+                 setLogoPublicUrl(urlData?.publicUrl ?? null);
+             }
+          }
+        }
+
+        setPurchaseOrder({ ...po, company_details: companyDetails });
+
       } catch (error) {
-        console.error('Error fetching purchase order:', error);
+        console.error('Error fetching purchase order details:', error);
         setError(error instanceof Error ? error.message : 'Failed to load purchase order');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchPurchaseOrder();
-  }, [params.companySlug, params.id]);
+    fetchPurchaseOrderAndDetails();
+  }, [params.id]);
 
   if (loading) {
     return (
@@ -207,24 +218,52 @@ export default function PODetail() {
             </div>
             
             <div>
-              <h3 className="text-lg font-medium mb-2">Details</h3>
-              <Card>
-                <CardContent className="p-4 space-y-2">
-                  <div className="flex justify-between">
-                    <div className="text-muted-foreground">Reference</div>
-                    <div>{purchaseOrder.po_number}</div>
-                  </div>
-                  <div className="flex justify-between">
-                    <div className="text-muted-foreground">Issue Date</div>
-                    <div>{new Date(purchaseOrder.created_at).toLocaleDateString()}</div>
-                  </div>
-                  <div className="flex justify-between">
-                    <div className="text-muted-foreground">Currency</div>
-                    <div>{purchaseOrder.currency}</div>
-                  </div>
-                </CardContent>
-              </Card>
+              <h3 className="text-lg font-medium mb-2">Your Company</h3>
+              {logoPublicUrl ? (
+                <img 
+                    src={logoPublicUrl} 
+                    alt={`${purchaseOrder.company_details?.name ?? 'Company'} logo`} 
+                    className="max-h-16 w-auto mb-2 border rounded p-1 bg-white dark:bg-gray-800" 
+                />
+              ) : purchaseOrder.company_details?.name ? (
+                <h3 className="text-lg font-semibold mb-2">{purchaseOrder.company_details.name}</h3>
+              ) : (
+                <div className="h-16 flex items-center text-muted-foreground text-sm">Company Details</div>
+              )}
+              {purchaseOrder.company_details && (
+                <div className="text-xs text-muted-foreground space-y-0.5 mt-2">
+                    {purchaseOrder.company_details.address && (
+                        <div className="whitespace-pre-line">{purchaseOrder.company_details.address}</div>
+                    )}
+                    {purchaseOrder.company_details.registration_number && (
+                        <div><span className="font-medium">Reg:</span> {purchaseOrder.company_details.registration_number}</div>
+                    )}
+                    {purchaseOrder.company_details.sales_tax_registration_number && (
+                        <div><span className="font-medium">VAT:</span> {purchaseOrder.company_details.sales_tax_registration_number}</div>
+                    )}
+                </div>
+              )}
             </div>
+          </div>
+          
+          <div>
+            <h3 className="text-lg font-medium mb-2">Purchase Order Details</h3>
+            <Card>
+              <CardContent className="p-4 space-y-2">
+                <div className="flex justify-between">
+                  <div className="text-muted-foreground">Reference</div>
+                  <div>{purchaseOrder.po_number}</div>
+                </div>
+                <div className="flex justify-between">
+                  <div className="text-muted-foreground">Issue Date</div>
+                  <div>{new Date(purchaseOrder.created_at).toLocaleDateString()}</div>
+                </div>
+                <div className="flex justify-between">
+                  <div className="text-muted-foreground">Currency</div>
+                  <div>{purchaseOrder.currency}</div>
+                </div>
+              </CardContent>
+            </Card>
           </div>
           
           <div>
