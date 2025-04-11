@@ -84,40 +84,42 @@ serve(async (req: Request) => {
     // const freeagentBillId = freeagentBillIdMatch ? parseInt(freeagentBillIdMatch[1], 10) : null;
     // console.log(`Create PO Function: FreeAgent Bill created: ${freeagentBillUrl} (ID: ${freeagentBillId})`);
 
-    // 6. Fetch Supplier Name from cache using URL (Renumbered from 6)
+    // 6. Fetch Supplier Name and Email from cache using URL
     let supplierName = 'Unknown Supplier'; // Default fallback
+    let supplierEmail: string | null = null; // Variable to store email
     if (payload.supplier_url) {
         const { data: contactData, error: contactError } = await supabaseAdmin
             .from('cached_contacts')
-            .select('name')
+            .select('name, email') // Select email as well
             .eq('freeagent_url', payload.supplier_url)
             .eq('company_id', companyId) // Ensure it belongs to the right company
             .maybeSingle();
             
         if (contactError) {
-            console.error(`Error fetching supplier name for URL ${payload.supplier_url}:`, contactError.message);
-            // Non-fatal error, proceed with default name
-        } else if (contactData?.name) {
-            supplierName = contactData.name;
-            console.log(`Found supplier name: ${supplierName}`);
+            console.error(`Error fetching supplier details for URL ${payload.supplier_url}:`, contactError.message);
+            // Non-fatal error, proceed with defaults
+        } else if (contactData) {
+            supplierName = contactData.name ?? supplierName;
+            supplierEmail = contactData.email ?? null; // Store the fetched email
+            console.log(`Found supplier: ${supplierName}, Email: ${supplierEmail}`);
         } else {
-             console.warn(`Could not find supplier name in cache for URL: ${payload.supplier_url}`);
+             console.warn(`Could not find supplier details in cache for URL: ${payload.supplier_url}`);
         }
     }
 
-    // 7. Save Purchase Order to Supabase
+    // 7. Save Purchase Order to Supabase (Renumbered)
     const poTotalAmount = payload.line_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const poRecord = {
         po_number: payload.po_number,
-        // freeagent_bill_id: freeagentBillId?.toString(), // REMOVED
-        freeagent_contact_url: payload.supplier_url, // Keep FA URLs for now, might replace with internal IDs later
+        freeagent_contact_url: payload.supplier_url,
         freeagent_project_url: payload.project_url,
-        supplier_name: supplierName, // Retained fetched name
+        supplier_name: supplierName,
+        supplier_email: supplierEmail, // Save the fetched email
         currency: payload.currency,
         notes: payload.notes,
         created_by: userId,
         amount: poTotalAmount,
-        status: 'Draft', // CHANGED from 'Pending'
+        status: 'Draft', // Default status is now set by DB, but keeping explicit is fine
         company_id: companyId,
         issue_date: payload.issue_date, 
         delivery_date: payload.delivery_date,

@@ -17,12 +17,19 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { formatCurrency, CurrencyCode } from "@/utils/currency";
+import { formatCurrency } from "@/utils/currency";
 import { Eye, MoreHorizontal, Mail, FileText, Download } from "lucide-react";
 import { supabase } from '@/integrations/supabase/client';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Database } from '@/integrations/supabase/types';
+
+// Define the type for a Purchase Order including the enum type
+type PurchaseOrderWithStatus = Database['public']['Tables']['purchase_orders']['Row'] & {
+    po_lines: Database['public']['Tables']['po_lines']['Row'][]; // Assuming lines are included
+};
 
 export default function POList() {
-  const [purchaseOrders, setPurchaseOrders] = useState([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrderWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const params = useParams<{ companySlug: string }>();
@@ -135,28 +142,18 @@ export default function POList() {
                 </TableCell>
               </TableRow>
             ) : (
-              purchaseOrders.map((po: any) => (
+              purchaseOrders.map((po) => (
                 <TableRow key={po.id} className="group">
                   <TableCell className="font-medium">{po.po_number}</TableCell>
                   <TableCell>{po.supplier_name}</TableCell>
                   <TableCell>
-                    {new Date(po.created_at).toLocaleDateString()}
+                    {new Date(po.created_at ?? Date.now()).toLocaleDateString()}
                   </TableCell>
                   <TableCell className="text-right">
-                    {formatCurrency(po.amount, po.currency as CurrencyCode)}
+                    {formatCurrency(po.amount, po.currency)}
                   </TableCell>
                   <TableCell className="text-center">
-                    <span 
-                      className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${
-                        po.status === "sent" 
-                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" 
-                          : po.status === "completed" 
-                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" 
-                            : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
-                      }`}
-                    >
-                      {po.status.charAt(0).toUpperCase() + po.status.slice(1)}
-                    </span>
+                    <StatusBadge status={po.status} />
                   </TableCell>
                   <TableCell>
                     <DropdownMenu>

@@ -18,19 +18,29 @@ import {
   TableHeader, 
   TableRow 
 } from "@/components/ui/table";
-import { formatCurrency, CurrencyCode } from "@/utils/currency";
-import { ArrowLeft, Printer, Mail, Download } from "lucide-react";
+import { formatCurrency } from "@/utils/currency";
+import { ArrowLeft, Printer, Mail, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { emailService } from "@/utils/email-service";
 import { supabase } from '@/integrations/supabase/client';
+import { StatusBadge } from '@/components/ui/status-badge';
+import { Database } from '@/integrations/supabase/types';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+// Define the type for a Purchase Order including the enum type and company details
+type PurchaseOrderWithDetails = Database['public']['Tables']['purchase_orders']['Row'] & {
+    po_lines: Database['public']['Tables']['po_lines']['Row'][];
+    company_details?: Database['public']['Tables']['company_details']['Row'] | null;
+};
 
 export default function PODetail() {
-  const [purchaseOrder, setPurchaseOrder] = useState<any>(null);
+  const [purchaseOrder, setPurchaseOrder] = useState<PurchaseOrderWithDetails | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [logoPublicUrl, setLogoPublicUrl] = useState<string | null>(null);
-  const params = useParams();
+  const params = useParams<{ companySlug: string; id: string }>();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   
   useEffect(() => {
     const fetchPurchaseOrderAndDetails = async () => {
@@ -82,6 +92,36 @@ export default function PODetail() {
     fetchPurchaseOrderAndDetails();
   }, [params.id]);
 
+  // --- Send Email Mutation ---
+  const sendEmailMutation = useMutation<any, Error, string>({
+    mutationFn: async (poId: string) => {
+      const functionName = 'send-po-email';
+      const { data, error } = await supabase.functions.invoke(functionName, {
+        body: { poId },
+      });
+
+      if (error) throw new Error(error.message || "Failed to invoke send email function.");
+      if (data?.error) throw new Error(data.error);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast({ title: "Email Sent", description: data?.message || "PO sent to supplier." });
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrder', params.id] }); 
+      queryClient.invalidateQueries({ queryKey: ['purchaseOrders'] });
+    },
+    onError: (error) => {
+      toast({ title: "Error Sending Email", description: error.message, variant: 'destructive' });
+    },
+  });
+
+  const handleSendToSupplier = () => {
+    if (purchaseOrder?.id) {
+      sendEmailMutation.mutate(purchaseOrder.id);
+    } else {
+      toast({ title: "Error", description: "Purchase Order ID is missing.", variant: 'destructive' });
+    }
+  };
+
   if (loading) {
     return (
       <BlurCard className="w-full">
@@ -131,13 +171,13 @@ export default function PODetail() {
     try {
       await emailService.sendPurchaseOrder(
         purchaseOrder.supplier_email,
-        purchaseOrder.reference,
+        purchaseOrder.po_number,
         `Purchase Order with ${purchaseOrder.po_lines.length} items, total: ${formatCurrency(total, purchaseOrder.currency)}`
       );
       
       toast({
         title: "Email Sent",
-        description: `Purchase Order ${purchaseOrder.reference} sent to ${purchaseOrder.supplier_email}`
+        description: `Purchase Order ${purchaseOrder.po_number} sent to ${purchaseOrder.supplier_email}`
       });
     } catch (error) {
       toast({
@@ -175,6 +215,21 @@ export default function PODetail() {
             <Download size={16} className="mr-2" />
             Download PDF
           </Button>
+          {purchaseOrder?.status === 'Draft' && (
+            <Button 
+              variant="default"
+              size="sm" 
+              onClick={handleSendToSupplier}
+              disabled={sendEmailMutation.isPending}
+            >
+              {sendEmailMutation.isPending ? (
+                 <Loader2 size={16} className="mr-2 animate-spin" />
+              ) : (
+                 <Mail size={16} className="mr-2" />
+              )}
+              Send to Supplier
+            </Button>
+          )}
         </div>
       </div>
       
@@ -190,17 +245,7 @@ export default function PODetail() {
             
             <div className="mt-4 md:mt-0 text-right">
               <div className="text-muted-foreground">Status</div>
-              <span 
-                className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${
-                  purchaseOrder.status === "Sent" 
-                    ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" 
-                    : purchaseOrder.status === "Completed" 
-                      ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" 
-                      : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-300"
-                }`}
-              >
-                {purchaseOrder.status}
-              </span>
+              <StatusBadge status={purchaseOrder.status} />
             </div>
           </div>
         </CardHeader>

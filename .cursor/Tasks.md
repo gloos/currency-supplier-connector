@@ -49,7 +49,7 @@ Here are the project features. Keep this file up to date and ask me before amend
         *   Calls the FreeAgent API (`POST /v2/projects`) to create the project in FreeAgent.
         *   Saves the project details (including the FreeAgent URL/ID) to your `cached_projects` table (or a dedicated `projects` table if you prefer).
         *   Optionally, create the draft invoice in FreeAgent (`POST /v2/invoices` with `status=Draft`) linked to the new project, using the provided invoicing amount. Store the draft invoice URL/ID if needed.
-3.  **Implement PO Status Tracking:**
+~~3.  **Implement PO Status Tracking:**~~
     *   **Task:** Define and manage PO statuses beyond the basic 'Pending'/'Sent'/'Completed' currently hinted at.
     *   **Action:** Update the `purchase_orders` table schema to include a more detailed status enum (e.g., `Draft`, `SentToSupplier`, `AcceptedBySupplier`, `RejectedBySupplier`, `InvoiceUploaded`, `InvoiceApproved`, `BilledInFreeAgent`, `Closed`, `Cancelled`).
     *   **Action:** Update the `create-purchase-order` function to set the initial status (e.g., `Draft` or `SentToSupplier` if email is sent immediately).
