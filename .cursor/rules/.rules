@@ -7,6 +7,7 @@
 3.  **Focus:** Concentrate efforts on the specific task assigned. Avoid unrelated changes or scope creep.
 4.  **Quality:** Strive for a clean, organized, well-tested, and secure codebase.
 5.  **Collaboration:** This document guides both human developers and the AI assistant for effective teamwork.
+6. Always use MCP connection to supabase to check if the proper SQL infrastructure is in place or to create it.
 
 ## 📚 Project Context & Understanding
 
@@ -14,9 +15,7 @@
     *   **Always** check for and thoroughly review relevant project documentation *before* starting any task. This includes:
         *   Product Requirements Documents (PRDs)
         *   `README.md` (Project overview, setup, patterns, technology stack)
-        *   `docs/architecture.md` (System architecture, component relationships)
-        *   `docs/technical.md` (Technical specifications, established patterns)
-        *   `tasks/tasks.md` (Current development tasks, requirements)
+        *   `.cursor/tasks.md` (Current development tasks, requirements)
     *   If documentation is missing, unclear, or conflicts with the request, **ask for clarification**.
 2.  **Architecture Adherence:**
     *   Understand and respect module boundaries, data flow, system interfaces, and component dependencies outlined in `docs/architecture.md`.
@@ -34,8 +33,8 @@
     *   **Plan:** Outline the steps. Tackle one logical change or file at a time.
     *   **Verify Testing:** Confirm how the change will be tested. Add tests if necessary *before* implementing (see TDD).
 3.  **Progress Tracking:**
-    *   Keep `docs/status.md` updated with task progress (in-progress, completed, blocked), issues encountered, and completed items.
-    *   Update `tasks/tasks.md` upon task completion or if requirements change during implementation.
+    *   Keep `.cursor/status.md` updated with task progress (in-progress, completed, blocked), issues encountered, and completed items.
+    *   Update `.cursor/Tasks.md` upon task completion or if requirements change during implementation.
 
 ## 🤖 AI Collaboration & Prompting
 

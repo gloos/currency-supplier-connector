@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
+import { FREEAGENT_CURRENCIES } from '@/lib/constants'; // Import the currency list
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +36,13 @@ import { PurchaseOrder, POLineItem } from '@/types/purchase-order';
 import { formatCurrency } from '@/utils/currency';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Database } from '@/integrations/supabase/types';
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select";
 
 // --- Type Aliases for Supabase Tables (using generated types) ---
 type CachedContact = Database['public']['Tables']['cached_contacts']['Row'];
@@ -55,7 +63,7 @@ const purchaseOrderSchema = z.object({
     supplier_url: z.string().min(1, "Supplier is required"), // Storing FreeAgent contact URL
     issue_date: z.date({ required_error: "Issue date is required" }),
     delivery_date: z.date().optional().nullable(),
-    currency: z.string().length(3, "Currency must be 3 letters").toUpperCase(),
+    currency: z.string().min(1, "Currency is required"), // No longer needs length/toUpperCase
     project_url: z.string().optional().nullable(), // Store FreeAgent project URL
     notes: z.string().optional().nullable(),
     line_items: z.array(poLineItemSchema).min(1, "At least one line item is required"),
@@ -364,10 +372,24 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
                             name="currency"
                             render={({ field }) => (
                                 <FormItem>
-                                    <FormLabel>Currency</FormLabel>
-                                    <FormControl>
-                                        <Input placeholder="e.g., GBP" {...field} maxLength={3} />
-                                    </FormControl>
+                                    <FormLabel>Currency *</FormLabel>
+                                    <Select 
+                                        onValueChange={field.onChange} 
+                                        defaultValue={field.value} // Use defaultValue for Select
+                                    >
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select currency" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            {FREEAGENT_CURRENCIES.map((currency) => (
+                                                <SelectItem key={currency.code} value={currency.code}>
+                                                    {currency.code} - {currency.name}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
                                     <FormMessage />
                                 </FormItem>
                             )}
@@ -494,7 +516,7 @@ export const POForm: React.FC<POFormProps> = ({ initialData }) => {
                                                 )}
                                             </TableCell>
                                             <TableCell className="text-right font-medium">
-                                                {formatCurrency(lineTotal, form.watch('currency') as any)}
+                                                {formatCurrency(lineTotal, form.watch('currency'))}
                                             </TableCell>
                                             <TableCell className="text-right">
                                                 <Button

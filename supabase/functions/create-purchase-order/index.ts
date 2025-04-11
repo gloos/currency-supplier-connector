@@ -63,50 +63,28 @@ serve(async (req: Request) => {
     console.log(`Create PO Function: Invoked by user: ${userId} for company: ${companyId}`);
 
     // 3. Get FreeAgent Client (handles creds & refresh internally)
-    const faClient = await getFreeAgentClient(supabaseAdmin, companyId);
-    if (!faClient) {
-        throw new Error("Failed to initialize FreeAgent client. Check connection in settings or server logs.");
-    }
-    console.log("Create PO Function: FreeAgent client initialized successfully.");
+    // const faClient = await getFreeAgentClient(supabaseAdmin, companyId);
+    // if (!faClient) {
+    //     throw new Error("Failed to initialize FreeAgent client. Check connection in settings or server logs.");
+    // }
+    // console.log("Create PO Function: FreeAgent client initialized successfully.");
 
-    // 4. Construct FreeAgent Bill Payload (Map from our payload)
-    const billPayload = {
-        bill: {
-            contact: payload.supplier_url,
-            dated_on: payload.issue_date.split('T')[0], // Format YYYY-MM-DD
-            due_on: payload.issue_date.split('T')[0], // ADDED: Set due date same as issue date
-            reference: payload.po_number,
-            comments: payload.notes || `From Purchase Order ${payload.po_number}`,
-            currency: payload.currency,
-            project: payload.project_url || undefined, // Optional project URL
-            bill_items: payload.line_items.map((item: PurchaseOrderItemInput) => ({
-              description: item.description,
-              quantity: item.quantity.toString(),
-              price_per_unit: item.unit_price.toFixed(2).toString(), 
-              // Use provided category or default
-              category: item.category_url || DEFAULT_FREEAGENT_CATEGORY_URL, 
-              sales_tax_rate: '0.0', // Assuming no tax for now
-            })),
-          },
-    };
-    console.log("Create PO Function: Sending payload to FreeAgent:", JSON.stringify(billPayload, null, 2));
+    // 4. Construct FreeAgent Bill Payload (Map from our payload) - REMOVED
+    // const billPayload = { ... };
+    // console.log("Create PO Function: Sending payload to FreeAgent:", JSON.stringify(billPayload, null, 2));
 
-    // 5. Call FreeAgent API to Create Bill (using the client)
-    const freeagentResponse = await faClient.post('/bills', billPayload);
-    if (!freeagentResponse.ok) {
-         const errorBody = await freeagentResponse.text();
-         console.error(`FreeAgent bill creation failed (${freeagentResponse.status}): ${errorBody}`);
-         throw new Error(`Failed to create FreeAgent bill: Status ${freeagentResponse.status}. ${errorBody}`);
-    }
-    const freeagentBillResponseData = await freeagentResponse.json();
-    const freeagentBillUrl = freeagentBillResponseData?.bill?.url;
-    if (!freeagentBillUrl) throw new Error('Failed to create bill or invalid response structure from FreeAgent.');
+    // 5. Call FreeAgent API to Create Bill (using the client) - REMOVED
+    // const freeagentResponse = await faClient.post('/bills', billPayload);
+    // if (!freeagentResponse.ok) { ... }
+    // const freeagentBillResponseData = await freeagentResponse.json();
+    // const freeagentBillUrl = freeagentBillResponseData?.bill?.url;
+    // if (!freeagentBillUrl) throw new Error('Failed to create bill or invalid response structure from FreeAgent.');
     
-    const freeagentBillIdMatch = freeagentBillUrl.match(/\/(\d+)$/); // Extract ID from URL
-    const freeagentBillId = freeagentBillIdMatch ? parseInt(freeagentBillIdMatch[1], 10) : null;
-    console.log(`Create PO Function: FreeAgent Bill created: ${freeagentBillUrl} (ID: ${freeagentBillId})`);
+    // const freeagentBillIdMatch = freeagentBillUrl.match(/\/(\d+)$/); // Extract ID from URL
+    // const freeagentBillId = freeagentBillIdMatch ? parseInt(freeagentBillIdMatch[1], 10) : null;
+    // console.log(`Create PO Function: FreeAgent Bill created: ${freeagentBillUrl} (ID: ${freeagentBillId})`);
 
-    // 6. Fetch Supplier Name from cache using URL
+    // 6. Fetch Supplier Name from cache using URL (Renumbered from 6)
     let supplierName = 'Unknown Supplier'; // Default fallback
     if (payload.supplier_url) {
         const { data: contactData, error: contactError } = await supabaseAdmin
@@ -131,15 +109,15 @@ serve(async (req: Request) => {
     const poTotalAmount = payload.line_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const poRecord = {
         po_number: payload.po_number,
-        freeagent_bill_id: freeagentBillId?.toString(), 
-        freeagent_contact_url: payload.supplier_url, 
+        // freeagent_bill_id: freeagentBillId?.toString(), // REMOVED
+        freeagent_contact_url: payload.supplier_url, // Keep FA URLs for now, might replace with internal IDs later
         freeagent_project_url: payload.project_url,
-        supplier_name: supplierName,
+        supplier_name: supplierName, // Retained fetched name
         currency: payload.currency,
         notes: payload.notes,
         created_by: userId,
         amount: poTotalAmount,
-        status: 'Pending', 
+        status: 'Draft', // CHANGED from 'Pending'
         company_id: companyId,
         issue_date: payload.issue_date, 
         delivery_date: payload.delivery_date,
@@ -172,10 +150,10 @@ serve(async (req: Request) => {
          else console.log("Create PO Function: PO Lines saved.");
      }
 
-    // 9. Return Success Response
+    // 9. Return Success Response (Renumbered from 9)
     return new Response(JSON.stringify({
         success: true,
-        message: 'Purchase Order created and FreeAgent Bill initiated.',
+        message: 'Purchase Order created successfully.', // UPDATED message
         // Pass back the created PO details from Supabase
         purchaseOrder: insertedPO 
        }), {
@@ -189,10 +167,10 @@ serve(async (req: Request) => {
     // Try to determine a more specific status code if possible
     let status = 500;
     if (message.includes("authentication") || message.includes("Missing or invalid authorization")) status = 401;
-    else if (message.includes("credentials") || message.includes("FreeAgent client")) status = 503; // Service Unavailable / Config error
+    // else if (message.includes("credentials") || message.includes("FreeAgent client")) status = 503; // Service Unavailable / Config error - Removed FA Client usage
     else if (message.includes("payload")) status = 400; // Bad request
     else if (message.includes("Database Error")) status = 500;
-    else if (message.includes("FreeAgent bill")) status = 502; // Bad Gateway
+    // else if (message.includes("FreeAgent bill")) status = 502; // Bad Gateway - Removed FA Bill creation
     
     return new Response(JSON.stringify({ error: message }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
