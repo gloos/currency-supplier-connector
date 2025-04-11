@@ -120,7 +120,7 @@ export type Database = {
       }
       cached_projects: {
         Row: {
-          budget_units: number | null
+          budget_units: string | null
           company_id: string
           created_at: string | null
           freeagent_contact_url: string | null
@@ -134,7 +134,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
-          budget_units?: number | null
+          budget_units?: string | null
           company_id: string
           created_at?: string | null
           freeagent_contact_url?: string | null
@@ -148,7 +148,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
-          budget_units?: number | null
+          budget_units?: string | null
           company_id?: string
           created_at?: string | null
           freeagent_contact_url?: string | null

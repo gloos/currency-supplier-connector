@@ -22,7 +22,7 @@ interface Project {
     url: string;
     name: string;
     status: string;
-    budget_units?: number;
+    budget_units?: string | null;
     is_ir35?: boolean;
     contact?: string; // URL of the contact
     // Add other relevant fields

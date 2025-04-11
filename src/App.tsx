@@ -12,6 +12,9 @@ import { AuthProvider, useAuth } from "@/contexts/AuthContext"; // Import useAut
 import Settings from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
+// Import Project Pages
+import ProjectListPage from "./pages/ProjectListPage";
+import ProjectNewPage from "./pages/ProjectNewPage";
 // Component Imports (used in nested routes)
 import POList from './components/purchase-order/po-list';
 import { POForm } from './components/purchase-order/po-form';
@@ -137,6 +140,9 @@ const AppRoutes = () => {
         <Route path="purchase-orders" element={<POList />} />
         <Route path="purchase-orders/new" element={<POForm />} />
         <Route path="purchase-orders/:id" element={<PODetail />} />
+        {/* Add Project Routes Here */}
+        <Route path="projects" element={<ProjectListPage />} />
+        <Route path="projects/new" element={<ProjectNewPage />} />
         {/* Add other company-specific routes here */}
         <Route path="*" element={<NotFound />} /> {/* Catch-all within company */}
       </Route> 

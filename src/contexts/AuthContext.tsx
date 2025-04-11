@@ -31,6 +31,7 @@ type AuthContextType = {
   session: Session | null;
   loadingAuth: boolean;
   loadingCompany: boolean;
+  companySlug: string | null;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (
     email: string,
@@ -237,18 +238,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [toast]);
 
-
   // --- Context Value ---
+  const companySlug = user?.company?.slug ?? null;
+  
   const value = React.useMemo(() => ({
     user,
     session,
     loadingAuth,
     loadingCompany,
+    companySlug,
     signIn,
     signUp,
     signOut,
-  }), [user, session, loadingAuth, loadingCompany, signIn, signUp, signOut]);
-
+  }), [user, session, loadingAuth, loadingCompany, companySlug, signIn, signUp, signOut]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
