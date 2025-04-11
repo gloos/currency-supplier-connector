@@ -55,12 +55,12 @@ Here are the project features. Keep this file up to date and ask me before amend
     *   **Action:** Update the `create-purchase-order` function to set the initial status (e.g., `Draft` or `SentToSupplier` if email is sent immediately).
     *   **Action:** Add logic/endpoints for suppliers to update the status (Accept/Reject - see below).
     *   **Action:** Update UI (`POList`, `PODetail`) to reflect these statuses clearly.
-4.  **Implement Initial PO Email Sending:**
-    *   **Task:** Send the PO email to the supplier automatically when a PO is created (or via a separate "Send" action).
-    *   **Action:** Decide *when* the email is sent (immediately on creation vs. manual trigger).
-    *   **Action:** Integrate `email-service.ts` (or a real email provider via an Edge Function) into the PO creation/sending flow. Pass necessary PO data (details, PDF link/content).
-    *   **Action:** Update the PO status to `SentToSupplier` after successful sending.
-5.  **Implement Supplier Interaction Portal:**
+~~4.  **Implement Initial PO Email Sending:**~~
+    *   ~~**Task:** Send the PO email to the supplier automatically when a PO is created (or via a separate "Send" action).~~
+    *   ~~**Action:** Decide *when* the email is sent (immediately on creation vs. manual trigger).~~
+    *   ~~**Action:** Integrate `email-service.ts` (or a real email provider via an Edge Function) into the PO creation/sending flow. Pass necessary PO data (details, PDF link/content).~~
+    *   ~~**Action:** Update the PO status to `SentToSupplier` after successful sending.~~
+~~5.  **Implement Supplier Interaction Portal:**~~
     *   **Task:** Create the supplier-facing portal.
     *   **Action:** Design the workflow: How does the supplier access it? (Unique link per PO emailed? Supplier accounts?).
     *   **Action:** Create frontend pages for the portal (React components, potentially a separate route structure like `/supplier/:token`).

@@ -26,6 +26,7 @@ serve(async (req: Request) => {
     // 1. Get Environment Variables
     const RESEND_API_KEY = Deno.env.get('RESEND_API_KEY');
     const RESEND_FROM_EMAIL = Deno.env.get('RESEND_FROM_EMAIL');
+    const APP_BASE_URL = Deno.env.get('APP_BASE_URL'); // Get App Base URL
 
     if (!RESEND_API_KEY) {
         console.error("Environment variable RESEND_API_KEY is not set.");
@@ -35,6 +36,11 @@ serve(async (req: Request) => {
         console.warn("Environment variable RESEND_FROM_EMAIL is not set. Using placeholder.");
         // Use a placeholder, but emails likely won't send correctly
         // throw new Error("Resend From Email is not configured."); 
+    }
+    if (!APP_BASE_URL) {
+        console.error("Environment variable APP_BASE_URL is not set.");
+        // You might want to throw an error or use a default/placeholder
+        throw new Error("Application Base URL is not configured.");
     }
     const fromEmail = RESEND_FROM_EMAIL || 'sender@example.com'; // Fallback placeholder
 
@@ -55,6 +61,7 @@ serve(async (req: Request) => {
             amount,
             currency,
             status,
+            supplier_portal_token, 
             company:companies ( name ) 
         `)
         .eq('id', poId)
@@ -73,11 +80,18 @@ serve(async (req: Request) => {
     if (!poData.supplier_email) {
          throw new Error(`Purchase Order ${poData.po_number} is missing a supplier email address.`);
     }
+    if (!poData.supplier_portal_token) {
+         // This shouldn't happen if create-po is working, but good to check
+         console.error(`PO ${poId} is missing a supplier_portal_token.`);
+         throw new Error(`Cannot send email for PO ${poData.po_number}: Missing supplier portal token.`);
+    }
     
     // Type assertion after checks
     const companyName = (poData.company as { name: string } | null)?.name ?? 'Your Company';
 
     // 4. Construct Resend Payload
+    const portalUrl = `${APP_BASE_URL.replace(/\/$/, '')}/supplier/${poData.supplier_portal_token}`;
+    
     // Basic HTML content - enhance later as needed
     const emailHtml = `
         <h1>Purchase Order ${poData.po_number} from ${companyName}</h1>
@@ -88,8 +102,8 @@ serve(async (req: Request) => {
             <li>PO Number: ${poData.po_number}</li>
             <li>Total Amount: ${poData.amount} ${poData.currency}</li> 
         </ul>
-        <p>You can view and manage this PO here:</p>
-        <p>[Supplier Portal Link - To be implemented]</p> 
+        <p>You can view and manage this PO online here:</p>
+        <p><a href="${portalUrl}">${portalUrl}</a></p> 
         <p>Thank you,<br>${companyName}</p>
     `;
 

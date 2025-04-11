@@ -485,6 +485,7 @@ export type Database = {
           status: Database["public"]["Enums"]["po_status"] | null
           supplier_email: string | null
           supplier_name: string
+          supplier_portal_token: string | null
           updated_at: string | null
         }
         Insert: {
@@ -508,6 +509,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["po_status"] | null
           supplier_email?: string | null
           supplier_name: string
+          supplier_portal_token?: string | null
           updated_at?: string | null
         }
         Update: {
@@ -531,6 +533,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["po_status"] | null
           supplier_email?: string | null
           supplier_name?: string
+          supplier_portal_token?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -557,6 +560,69 @@ export type Database = {
           },
         ]
       }
+      uploaded_invoices: {
+        Row: {
+          approved_or_rejected_at: string | null
+          approved_or_rejected_by: string | null
+          company_id: string
+          content_type: string
+          filename: string
+          id: string
+          purchase_order_id: string
+          size_bytes: number
+          status: Database["public"]["Enums"]["invoice_upload_status"]
+          storage_path: string
+          supplier_invoice_amount: number | null
+          supplier_invoice_number: string | null
+          uploaded_at: string
+        }
+        Insert: {
+          approved_or_rejected_at?: string | null
+          approved_or_rejected_by?: string | null
+          company_id: string
+          content_type: string
+          filename: string
+          id?: string
+          purchase_order_id: string
+          size_bytes: number
+          status?: Database["public"]["Enums"]["invoice_upload_status"]
+          storage_path: string
+          supplier_invoice_amount?: number | null
+          supplier_invoice_number?: string | null
+          uploaded_at?: string
+        }
+        Update: {
+          approved_or_rejected_at?: string | null
+          approved_or_rejected_by?: string | null
+          company_id?: string
+          content_type?: string
+          filename?: string
+          id?: string
+          purchase_order_id?: string
+          size_bytes?: number
+          status?: Database["public"]["Enums"]["invoice_upload_status"]
+          storage_path?: string
+          supplier_invoice_amount?: number | null
+          supplier_invoice_number?: string | null
+          uploaded_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "uploaded_invoices_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "companies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "uploaded_invoices_purchase_order_id_fkey"
+            columns: ["purchase_order_id"]
+            isOneToOne: true
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
@@ -576,6 +642,7 @@ export type Database = {
       }
     }
     Enums: {
+      invoice_upload_status: "PendingApproval" | "Approved" | "Rejected"
       po_status:
         | "Draft"
         | "SentToSupplier"
@@ -702,6 +769,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      invoice_upload_status: ["PendingApproval", "Approved", "Rejected"],
       po_status: [
         "Draft",
         "SentToSupplier",

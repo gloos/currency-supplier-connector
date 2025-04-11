@@ -15,6 +15,8 @@ import AuthPage from "./pages/AuthPage";
 // Import Project Pages
 import ProjectListPage from "./pages/ProjectListPage";
 import ProjectNewPage from "./pages/ProjectNewPage";
+// Import Supplier Portal Page
+import SupplierPortalPage from "./pages/SupplierPortalPage";
 // Component Imports (used in nested routes)
 import POList from './components/purchase-order/po-list';
 import { POForm } from './components/purchase-order/po-form';
@@ -99,6 +101,12 @@ const AppRoutes = () => {
          path="/auth"
          // If already logged in (and finished loading), redirect away from auth page
          element={user ? <Navigate to="/" replace /> : <AuthPage />}
+      />
+
+      {/* --- Supplier Portal Route (Public) --- */}
+      <Route 
+        path="/supplier/:token"
+        element={<SupplierPortalPage />}
       />
 
       {/* Settings Page (Use Layout + Outlet + Nested Route) */}

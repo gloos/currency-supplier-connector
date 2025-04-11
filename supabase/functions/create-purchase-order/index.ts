@@ -107,19 +107,23 @@ serve(async (req: Request) => {
         }
     }
 
-    // 7. Save Purchase Order to Supabase (Renumbered)
+    // 7. Generate Unique Token for Supplier Portal
+    const supplierPortalToken = crypto.randomUUID();
+
+    // 8. Save Purchase Order to Supabase (Renumbered)
     const poTotalAmount = payload.line_items.reduce((sum, item) => sum + (item.quantity * item.unit_price), 0);
     const poRecord = {
         po_number: payload.po_number,
         freeagent_contact_url: payload.supplier_url,
         freeagent_project_url: payload.project_url,
         supplier_name: supplierName,
-        supplier_email: supplierEmail, // Save the fetched email
+        supplier_email: supplierEmail,
+        supplier_portal_token: supplierPortalToken, // Add the token
         currency: payload.currency,
         notes: payload.notes,
         created_by: userId,
         amount: poTotalAmount,
-        status: 'Draft', // Default status is now set by DB, but keeping explicit is fine
+        status: 'Draft',
         company_id: companyId,
         issue_date: payload.issue_date, 
         delivery_date: payload.delivery_date,
@@ -129,10 +133,14 @@ serve(async (req: Request) => {
       .insert(poRecord)
       .select()
       .single();
-    if (insertError) throw new Error(`Database Error saving PO: ${insertError.message}`);
+    if (insertError) {
+         // Consider what to do if token insert fails due to uniqueness collision (highly unlikely with UUID)
+         console.error(`Database Error saving PO: ${insertError.message}`);
+         throw new Error(`Database Error saving PO: ${insertError.message}`);
+    }
     console.log('Create PO Function: PO saved to DB:', insertedPO.id);
 
-    // 8. Save Line Items 
+    // 9. Save Line Items (Renumbered)
      if (insertedPO && insertedPO.id && payload.line_items.length > 0) {
          const lineItemsToInsert = payload.line_items.map(item => ({
              purchase_order_id: insertedPO.id,
@@ -152,7 +160,7 @@ serve(async (req: Request) => {
          else console.log("Create PO Function: PO Lines saved.");
      }
 
-    // 9. Return Success Response (Renumbered from 9)
+    // 10. Return Success Response (Renumbered from 9)
     return new Response(JSON.stringify({
         success: true,
         message: 'Purchase Order created successfully.', // UPDATED message
